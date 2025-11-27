@@ -12,8 +12,7 @@ const height = window.innerHeight;
 
 const svg = d3.select("#chart").append("svg")
     .attr("width", width)
-    .attr("height", height)
-    .style("background", "#0D1B3DFF");
+    .attr("height", height);
 
 const tooltip = d3.select("#tooltip");
 const yearSelect = d3.select("#yearSelect");
@@ -181,7 +180,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
             r: 140,
             x: center.x,
             y: center.y,
-            color: "#eacd0e"
+            color: "#e33e3e"
         });
 
         // BOROUGHS
@@ -194,7 +193,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
                 baseAngle: ang,
                 r: radiusScale(boroughCounts[b]),
                 noiseOffset: Math.random() * 20000,
-                color: "#971634",
+                color: "#fd9915",
                 x: center.x + orbitRadius * Math.cos(ang),
                 y: center.y + orbitRadius * Math.sin(ang)
             });
@@ -246,7 +245,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
                     x: parent.x,
                     y: parent.y,
                     noiseOffset: Math.random() * 20000,
-                    color: "#b3a440"
+                    color: "#785740"
                 });
             });
         });

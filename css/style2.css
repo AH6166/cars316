@@ -147,6 +147,30 @@ p {
     border: none;
 }
 
+/* Fullscreen Orbit Map Section */
+.orbit-section {
+    display: flex;
+    flex-direction: column;
+    padding: 0; /* remove top/bottom padding */
+}
+
+.orbit-header {
+    text-align: center;
+    padding: 2rem 3rem 1rem;
+}
+
+.orbit-full {
+    flex-grow: 1;
+    width: 100vw;
+    height: 100%;
+    border: none;
+}
+
+/* Ensure other slides keep their formatting */
+#slide-orbit .slide-content {
+    opacity: 1; /* do not animate fade in the iframe */
+}
+
 
 /* =========================================
    ANIMATIONS
