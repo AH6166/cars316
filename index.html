@@ -32,9 +32,10 @@
     <div class="container">
       <h2 class="section-title mb-2">Risk by day of week</h2>
       <p class="section-copy small mb-3">
-        What this shows: for each day of the week, the share of crashes that led to someone being hurt. The dashed line is the overall average across the whole dataset.
-        How we calculate it: we count crashes with injuries and divide by all crashes for that day. For very small groups, numbers can bounce around, so we gently pull those tiny groups toward the overall average. Think of it as a small stabilizer that keeps outliers from being misleading.
-        How to read it: bars above the dashed line suggest a riskier‑than‑average day; bars below suggest a calmer day, all else equal.
+        What this shows: a simple Monday→Sunday comparison. Toggle Injury mode to switch between two views:
+        • Off: total crash counts by day.
+        • On: the share of crashes that involved injuries by day, with a dashed line showing the dataset average.
+        How we calculate it (Injury mode): injury crashes divided by all crashes for that day, with a light stabilizer so tiny samples don’t swing wildly. How to read it: in Injury mode, bars above the dashed line suggest riskier‑than‑average; below suggests calmer (within this file).
       </p>
       <div class="chart-card p-2 p-md-3">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><div class="chart-title">Most dangerous day of week</div><div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="dow-injury-mode"><label class="form-check-label" for="dow-injury-mode">Injury mode</label></div></div>
@@ -48,9 +49,10 @@
     <div class="container">
       <h2 class="section-title mb-2">Risk by vehicle type</h2>
       <p class="section-copy small mb-3">
-        What this shows: among the most common vehicle types, the share of crashes that led to injuries. The dashed line marks the overall average.
-        How we calculate it: for each vehicle type we divide injury crashes by all crashes of that type. Rare categories can swing wildly, so we focus on the common types and lightly steady the estimates so tiny groups don’t mislead.
-        How to read it: bars to the right of the dashed line suggest a higher‑than‑average chance of injury for that vehicle type in this dataset; bars to the left suggest lower.
+        What this shows: how vehicle type relates to risk. Use the Injury mode switch to view:
+        • Off: total crash counts for the most common vehicle types (we limit to common types for stability).
+        • On: the share of crashes that involved injuries for each type, with a dashed line showing the dataset average. Estimates for very small groups are lightly stabilized.
+        How to read it: in Injury mode, bars right of the dashed line indicate higher‑than‑average injury share in this file; left indicates lower.
       </p>
       <div class="chart-card p-2 p-md-3">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><div class="chart-title">Most dangerous vehicle type</div><div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="vehicle-injury-mode"><label class="form-check-label" for="vehicle-injury-mode">Injury mode</label></div></div>
@@ -64,9 +66,10 @@
     <div class="container">
       <h2 class="section-title mb-2">Male vs female drivers</h2>
       <p class="section-copy small mb-3">
-        What this shows: for each recorded driver sex (Male, Female, and sometimes Other/Unknown), the share of crashes that involved an injury. The dashed line shows the overall average.
-        How we calculate it: we take injury crashes divided by all crashes for each group. To keep tiny groups from swinging wildly, we apply a light stabilizer that nudges very small samples toward the overall average.
-        How to read it: taller bars mean a higher‑than‑average chance that a crash involved injuries for that group in this dataset; shorter bars mean lower.
+        What this shows: outcomes by recorded driver sex (Male, Female, and an Other/Unknown bucket). Use the Injury mode switch:
+        • Off: total crash counts by group.
+        • On: the share of crashes that involved injuries for each group, with a dashed line showing the dataset average. Very small groups are lightly stabilized to reduce noise.
+        Notes: some records are missing or ambiguous; those are grouped under Other/Unknown.
       </p>
       <div class="chart-card p-2 p-md-3">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><div class="chart-title">Male vs female drivers</div><div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="gender-injury-mode"><label class="form-check-label" for="gender-injury-mode">Injury mode</label></div></div>
@@ -83,7 +86,9 @@
         <div class="col-lg-5">
           <div class="chapter-label">Chapter 1 · Place</div>
           <h2 class="section-title">See where risk lives</h2>
-          <p class="section-copy">How this map is made: we read the crash file, pick rows that have a valid date, time, and location, and turn each crash into a dot on the map. The dots stay the same visual size as you zoom, so you can still see clusters when zoomed out. The Hour slider simply shows crashes that happened in that hour (for example, 7:00–7:59). What to look for: clusters reveal busy, risk‑heavy streets and junctions; commute hours spread activity along major corridors; late‑night hours concentrate in fewer spots.</p>
+          <p class="section-copy">How this map is made: we read the crash file, keep rows with valid date, time, and location, and render each crash as a dot. Dots keep the same on‑screen size as you zoom so clusters remain visible. Use the Hour slider to filter crashes to a specific hour (e.g., 07:00–07:59).
+          Injury mode: when off, all dots share one color. When on, crashes that involved injuries are colored by number/severity (deeper color = more severe or more people hurt) and sized slightly larger; non‑injury crashes are dimmed. This highlights where injuries concentrate at the selected hour.
+          What to look for: clusters point to busy, risk‑heavy streets and junctions; commute hours spread activity along corridors; late‑night hours concentrate in fewer spots.</p>
         </div>
         <div class="col-lg-7">
           <div class="chart-card p-2 p-md-3">
@@ -134,8 +139,11 @@
         <div class="col-lg-5">
           <div class="chapter-label">Chapter 2 · Time</div>
           <h2 class="section-title">Find calmer hours</h2>
-          <p class="section-copy">How this heatmap is made: we make a simple grid of time—months across the top and hours down the side—and count how many crashes fall into each square. Darker, warmer colors mean “more here” relative to what you’re looking at. You can zoom the time axis or reorder the hours to compare patterns.
-          About the color and toggle: by default (Global), colors compare all squares to each other, so very busy months look hotter overall. Switch to Per column to compare hours within each month (each column is scaled to itself); this is great for seeing daily patterns even in quieter months. Either way, you’re seeing “where is it higher vs lower,” not exact unit totals.</p>
+          <p class="section-copy">How this heatmap is made: it’s a month‑by‑hour grid. Each cell summarizes the crashes in that month at that hour. You can zoom the time axis (Ctrl/Cmd + scroll or pinch) and use vertical scroll over the chart to cycle the hour order.
+          Color and toggles:
+          • Injury mode off: color shows relative frequency. Global compares all cells to each other; Per column compares hours within each month (good for spotting daily patterns in quieter months).
+          • Injury mode on: color shows the share of crashes that involved injuries in each cell. In this mode, the normalization setting is ignored and the legend shows percentages. Tooltips display counts and injury share.
+          Reading tip: colors are percentile‑based within the current view. “Hotter” means higher relative value in this window, not an absolute unit scale.</p>
         </div>
         <div class="col-lg-7">
           <div class="chart-card p-2 p-md-3">
@@ -175,7 +183,10 @@
         <div class="col-lg-5">
           <div class="chapter-label">Chapter 3 · Why</div>
           <h2 class="section-title">Choose better defaults</h2>
-          <p class="section-copy">What this shows: which conditions tend to go with injuries more often than we’d expect by chance. Examples include driver actions, vehicle types, hours, and contributing factors. How we rank them: for each condition we compare its injury share with the overall average and give it a simple “are these connected?” score (a standard statistics check). Items rise to the top when the difference is real and based on many crashes. Color shows direction: red means higher than average; green means lower. Tip: focus on the top bars with large counts.</p>
+          <p class="section-copy">What this shows: conditions that line up with injuries more often (or less often) than the dataset average. Examples include driver actions, vehicle types, hours, contributing factors, and borough.
+          How we rank them: for each value we compare its injury share to the overall average and compute a standard chi‑square score. Large, consistent differences rise to the top; tiny, noisy groups are filtered out.
+          Injury mode: when off, the x‑axis is the chi‑square score (how strongly the value explains variation). When on, the x‑axis switches to the injury rate for that value, shown as a percentage. Color encodes direction via risk ratio: red = higher than average, green = lower.
+          Reading tip: prioritize items with both high rank and large sample sizes.</p>
         </div>
         <div class="col-lg-7">
           <div class="chart-card p-2 p-md-3 mb-3">

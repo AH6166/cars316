@@ -12,7 +12,8 @@ const height = window.innerHeight;
 
 const svg = d3.select("#chart").append("svg")
     .attr("width", width)
-    .attr("height", height);
+    .attr("height", height)
+    .style("background", "#0b1020");
 
 const tooltip = d3.select("#tooltip");
 const yearSelect = d3.select("#yearSelect");
@@ -27,7 +28,24 @@ feMerge.append("feMergeNode").attr("in", "blur");
 feMerge.append("feMergeNode").attr("in", "SourceGraphic");
 
 // Layer for dynamic viz elements
+// Insert a transparent background rect before viz layer to capture pan/zoom gestures
 const vizLayer = svg.append("g").attr("class", "viz-layer");
+const zoomBg = svg.insert("rect", "g.viz-layer")
+    .attr("class", "zoom-bg")
+    .attr("x", 0)
+    .attr("y", 0)
+    .attr("width", width)
+    .attr("height", height)
+    .style("fill", "none")
+    .style("pointer-events", "all");
+
+// Enable pan & zoom on the whole scene by transforming vizLayer
+const zoom = d3.zoom()
+    .scaleExtent([0.5, 4])
+    .on("zoom", (event) => {
+        vizLayer.attr("transform", event.transform);
+    });
+svg.call(zoom);
 
 const boroughs = ["BROOKLYN", "QUEENS", "MANHATTAN", "BRONX", "STATEN ISLAND"];
 const center = { x: width / 2, y: height / 2 };
@@ -241,7 +259,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
             .selectAll("line.sunLink")
             .data(planetLinks)
             .enter().append("line")
-            .attr("stroke", "#bfbab2")
+            .attr("stroke", "#94a3b8")
             .attr("stroke-width", 2)
             .attr("opacity", 0.7)
             .attr("filter", "url(#soft-glow)");
@@ -265,9 +283,9 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
             .attr("stroke-width", 3)
             .call(
                 d3.drag()
-                    .on("start", (e, d) => d.dragging = (d.type === "borough"))
+                    .on("start", (e, d) => { e.sourceEvent?.stopPropagation?.(); d.dragging = (d.type === "borough"); })
                     .on("drag", (e, d) => { if (d.dragging) { d.x = e.x; d.y = e.y; } })
-                    .on("end", (e, d) => d.dragging = false)
+                    .on("end", (e, d) => { d.dragging = false; })
             );
 
         moonCircles = vizLayer.append("g")
@@ -282,9 +300,9 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
             .style("opacity", 0.93)
             .call(
                 d3.drag()
-                    .on("start", (e, d) => d.dragging = true)
+                    .on("start", (e, d) => { e.sourceEvent?.stopPropagation?.(); d.dragging = true; })
                     .on("drag", (e, d) => { d.x = e.x; d.y = e.y; })
-                    .on("end", (e, d) => d.dragging = false)
+                    .on("end", (e, d) => { d.dragging = false; })
             );
 
         // LABELS — SUN + BOROUGHS
@@ -293,7 +311,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
             .data(nodes)
             .enter().append("text")
             .attr("text-anchor", "middle")
-            .style("fill", "#3c3c3c")
+            .style("fill", "#e5edff")
             .style("pointer-events", "none")
             .each(function (d) {
                 const t = d3.select(this);
@@ -316,7 +334,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
             .data(moonNodes)
             .enter().append("text")
             .attr("text-anchor", "middle")
-            .style("fill", "#444")
+            .style("fill", "#cbd5e1")
             .style("pointer-events", "none")
             .style("font-size", "13px")
             .each(function (d) {
