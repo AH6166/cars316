@@ -5,41 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <title>NYC Crash Explorer</title>
 
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@300;400;600&family=Montserrat+Alternates:wght@700;900&display=swap" rel="stylesheet">
+
     <!-- fullPage.js CSS -->
     <link rel="stylesheet"
           href="https://cdnjs.cloudflare.com/ajax/libs/fullPage.js/4.0.20/fullpage.min.css"/>
 
-    <!-- Your existing styles -->
-    <link rel="stylesheet" href="css/styles.css"/>
-
-    <style>
-        /* Slide styling enhancement */
-        .section {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 3rem 10%;
-        }
-        .slide-content {
-            max-width: 1200px;
-            text-align: left;
-            animation: fadeIn 0.8s ease-out forwards;
-            opacity: 0;
-        }
-        @keyframes fadeIn {
-            to { opacity: 1; transform: translateY(0); }
-            from { opacity: 0; transform: translateY(20px); }
-        }
-
-        h1, h2 {
-            font-family: 'Bangers', sans-serif;
-            letter-spacing: 1px;
-            color: #fff;
-        }
-        .chart-container {
-            margin-top: 1.5rem;
-        }
-    </style>
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/style2.css"/>
 </head>
 
 <body>
@@ -50,12 +24,41 @@
     <section class="section" id="slide-hero">
         <div class="slide-content">
             <h1>NYC Crash Explorer</h1>
-            <p>Where, when, and why traffic injuries happen — and what you can do about it.</p>
-            <p class="mt-3">Scroll to continue</p>
+
+            <div id="hero-intro" class="hidden-intro">
+                <p>Data: NYC Open Data - Motor Vehicle Collisions</p>
+                <p>Authors: Andrew Hu; Felix Wu; Benjamin He.</p>
+                <p class="scroll-hint"></p>
+            </div>
         </div>
     </section>
 
-    <!-- Slide 2 - Risk by Day -->
+    <!-- Slide 2 - Introduction -->
+    <section class="section" id="slide-intro">
+        <div class="slide-content intro-content">
+            <h2>Why Explore NYC Crashes?</h2>
+
+            <p class="intro-highlight">
+                More than 200,000 traffic collisions happen in NYC each year —
+                but the risk is not the same everywhere or at every time.
+                Understanding the patterns helps us prevent injuries.
+            </p>
+
+            <div class="intro-divider"></div>
+
+            <p class="intro-subtext">Our dashboard reveals:</p>
+
+            <ul class="intro-list">
+                <li><span class="icon">⏱️</span> Which days and hours are most dangerous</li>
+                <li><span class="icon">🚗</span> Differences by vehicle type and driver behavior</li>
+                <li><span class="icon">📍</span> Where crashes concentrate on the map</li>
+                <li><span class="icon">⚠️</span> Conditions linked with higher injury risk</li>
+            </ul>
+        </div>
+    </section>
+
+
+    <!-- Slide 3 - Risk by Day -->
     <section class="section" id="slide-day">
         <div class="slide-content">
             <h2>Risk by Day of Week</h2>
@@ -63,7 +66,7 @@
         </div>
     </section>
 
-    <!-- Slide 3 - Vehicle Type -->
+    <!-- Slide 4 - Vehicle Type -->
     <section class="section" id="slide-vehicle">
         <div class="slide-content">
             <h2>Risk by Vehicle Type</h2>
@@ -71,7 +74,7 @@
         </div>
     </section>
 
-    <!-- Slide 4 - Male vs Female -->
+    <!-- Slide 5 - Male vs Female -->
     <section class="section" id="slide-gender">
         <div class="slide-content">
             <h2>Male vs Female Drivers</h2>
@@ -79,7 +82,7 @@
         </div>
     </section>
 
-    <!-- Slide 5 - Dot Map -->
+    <!-- Slide 6 - Dot Map -->
     <section class="section" id="slide-map">
         <div class="slide-content">
             <h2>Accident Locations</h2>
@@ -87,15 +90,15 @@
         </div>
     </section>
 
-    <!-- Slide 6 - Orbit Map -->
+    <!-- Slide 7 - Orbit Map -->
     <section class="section" id="slide-orbit">
         <div class="slide-content">
             <h2>Orbit Accident Map</h2>
-            <iframe src="orbit/orbit.html" width="100%" height="600px" style="border:none;"></iframe>
+            <iframe src="orbit/orbit.html" height="600px"></iframe>
         </div>
     </section>
 
-    <!-- Slide 7 - Heatmap -->
+    <!-- Slide 8 - Heatmap -->
     <section class="section" id="slide-heatmap">
         <div class="slide-content">
             <h2>Risk by Time of Day</h2>
@@ -103,7 +106,7 @@
         </div>
     </section>
 
-    <!-- Slide 8 - Explanatory Factors -->
+    <!-- Slide 9 - Explanatory Factors -->
     <section class="section" id="slide-why">
         <div class="slide-content">
             <h2>Why Injuries Occur</h2>
@@ -111,7 +114,7 @@
         </div>
     </section>
 
-    <!-- Slide 9 - Estimator -->
+    <!-- Slide 10 - Estimator -->
     <section class="section" id="slide-estimator">
         <div class="slide-content">
             <h2>Estimate Your Scenario</h2>
@@ -119,7 +122,7 @@
         </div>
     </section>
 
-    <!-- Slide 10 - Decision Chains -->
+    <!-- Slide 11 - Decision Chains -->
     <section class="section" id="slide-chains">
         <div class="slide-content">
             <h2>Best vs Worst Risk Chains</h2>
@@ -127,7 +130,7 @@
         </div>
     </section>
 
-    <!-- Slide 11 - Conclusion -->
+    <!-- Slide 12 - Conclusion -->
     <section class="section" id="slide-end">
         <div class="slide-content">
             <h2>Thanks for exploring</h2>
@@ -145,14 +148,26 @@
     new fullpage('#fullpage', {
         navigation: true,
         navigationPosition: 'right',
-        scrollOverflow: true,
-        scrollingSpeed: 800,
+        scrollOverflow: false,
+        scrollingSpeed: 500,
         keyboardScrolling: true,
-        controlArrows: true
+        controlArrows: true,
+
+        afterLoad: function(origin, destination) {
+            if (destination.index === 0) {
+                document.getElementById('hero-intro').classList.add('reveal');
+            }
+        },
+
+        onLeave: function(origin, destination) {
+            if (origin.index === 0) {
+                document.getElementById('hero-intro').classList.remove('reveal');
+            }
+        }
     });
 </script>
 
-<!-- Your existing scripts -->
+<!-- Data visualizations -->
 <script src="js/main.js"></script>
 <script src="js/analysis.js"></script>
 <script src="js/dataLoader.js"></script>
