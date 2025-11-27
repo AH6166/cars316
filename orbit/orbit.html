@@ -6,17 +6,16 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&display=swap');
         body {
+            font-family: 'Montserrat Alternates', sans-serif;
             margin: 0;
-            background: #0b1020;
-            color: #e5edff;
-            font-family: 'Comic Neue', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+            color: #ffffff;
             overflow: hidden;
         }
 
-        #chart {
+        /* Optional: ensure the chart SVG fills screen cleanly */
+        #chart svg {
             width: 100vw;
             height: 100vh;
-            background: #0b1020;
         }
 
         .tooltip {
@@ -54,7 +53,7 @@
             border-radius: 10px;
             border: 1px solid #334155;
             background: rgba(255,255,255,0.08);
-            color: #eacd0e;
+            color: #ffffff;
             font-size: 14px;
             font-weight: 600;
             outline: none;
@@ -73,6 +72,18 @@
         #controls select:focus-visible {
             outline: 2px solid #19e3ff;
             outline-offset: 2px;
+        }
+
+        #controls select {
+            color: #ffffff !important;
+            background-color: rgba(0, 0, 0, 0.55) !important;
+        }
+
+        /* Style dropdown options too */
+        #controls select option {
+            background-color: #1e293b; /* dark */
+            color: #ffffff;            /* white text */
+            font-weight: 600;
         }
     </style>
 </head>
