@@ -14,6 +14,12 @@
 
     <!-- Styles -->
     <link rel="stylesheet" href="css/style2.css"/>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet"
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
 </head>
 
 <body>
@@ -62,7 +68,27 @@
         <iframe class="orbit-full" src="orbit/orbit.html"></iframe>
     </section>
 
-    <!-- Slide 4 - Vehicle Type -->
+    <!-- Slide 4 - Dot Map -->
+    <section class="section" id="slide-map">
+        <div class="slide-content">
+            <h2>Accident Locations</h2>
+            <p class="slide-desc">
+                Each crash is plotted as a dot. Adjust the Hour filter to explore peak commute times and injury hotspots.
+            </p>
+
+            <div class="map-controls">
+                <label for="hour-slider">Hour:</label>
+                <input id="hour-slider" type="range" min="0" max="23" step="1" value="0">
+                <output id="hour-label">00:00</output>
+
+                <label><input type="checkbox" id="map-injury-mode"> Injury mode</label>
+            </div>
+
+            <div id="leaflet-map" class="chart-container" style="height:60vh;"></div>
+        </div>
+    </section>
+
+    <!-- Slide 5 - Vehicle Type -->
     <section class="section" id="slide-vehicle">
         <div class="slide-content">
             <h2>Risk by Vehicle Type</h2>
@@ -70,7 +96,202 @@
         </div>
     </section>
 
-    <!-- Slide 5 - Male vs Female -->
+    <!-- Slide 6 - Male vs Female --><!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <title>NYC Crash Explorer</title>
+
+        <!-- Google Fonts -->
+        <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@300;400;600&family=Montserrat+Alternates:wght@700;900&display=swap" rel="stylesheet">
+
+        <!-- fullPage.js CSS -->
+        <link rel="stylesheet"
+              href="https://cdnjs.cloudflare.com/ajax/libs/fullPage.js/4.0.20/fullpage.min.css"/>
+
+        <!-- Styles -->
+        <link rel="stylesheet" href="css/style2.css"/>
+
+        <!-- Leaflet CSS -->
+        <link rel="stylesheet"
+              href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+              integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+              crossorigin=""/>
+    </head>
+
+    <body>
+
+    <div id="fullpage">
+
+        <!-- Slide 1 - Hero -->
+        <section class="section" id="slide-hero">
+            <div class="slide-content">
+                <h1>NYC Crash Explorer</h1>
+
+                <div id="hero-intro" class="hidden-intro">
+                    <p>Data: NYC Open Data - Motor Vehicle Collisions</p>
+                    <p>Authors: Andrew Hu; Felix Wu; Benjamin He.</p>
+                    <p class="scroll-hint"></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 2 - Introduction -->
+        <section class="section" id="slide-intro">
+            <div class="slide-content intro-content">
+                <h2>Why Explore NYC Crashes?</h2>
+
+                <p class="intro-highlight">
+                    More than 200,000 traffic collisions happen in NYC each year —
+                    but the risk is not the same everywhere or at every time.
+                    Understanding the patterns helps us prevent injuries.
+                </p>
+
+                <div class="intro-divider"></div>
+
+                <p class="intro-subtext">Our dashboard reveals:</p>
+
+                <ul class="intro-list">
+                    <li><span class="icon">📍</span> Where crashes concentrate</li>
+                    <li><span class="icon">⏱️</span> Which days and hours are most dangerous</li>
+                    <li><span class="icon">🚗</span> Differences by vehicle type and driver behavior</li>
+                    <li><span class="icon">⚠️</span> Conditions linked with higher injury risk</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Slide 3 - Orbit Map -->
+        <section class="section orbit-section" id="slide-orbit">
+            <iframe class="orbit-full" src="orbit/orbit.html"></iframe>
+        </section>
+
+        <!-- Slide 4 - Dot Map -->
+        <section class="section" id="slide-map">
+            <div class="slide-content">
+                <h2>Accident Locations</h2>
+                <p class="slide-desc">
+                    Each crash is plotted as a dot. Adjust the Hour filter to explore peak commute times and injury hotspots.
+                </p>
+
+                <div class="map-controls">
+                    <label for="hour-slider">Hour:</label>
+                    <input id="hour-slider" type="range" min="0" max="23" step="1" value="0">
+                    <output id="hour-label">00:00</output>
+
+                    <label><input type="checkbox" id="map-injury-mode"> Injury mode</label>
+                </div>
+
+                <div id="leaflet-map" class="chart-container" style="height:60vh;"></div>
+            </div>
+        </section>
+
+        <!-- Slide 5 - Vehicle Type -->
+        <section class="section" id="slide-vehicle">
+            <div class="slide-content">
+                <h2>Risk by Vehicle Type</h2>
+                <div id="vehicle-chart" class="chart-container"></div>
+            </div>
+        </section>
+
+        <!-- Slide 6 - Male vs Female -->
+        <section class="section" id="slide-gender">
+            <div class="slide-content">
+                <h2>Male vs Female Drivers</h2>
+                <div id="gender-chart" class="chart-container"></div>
+            </div>
+        </section>
+
+        <!-- Slide 7 - Heatmap -->
+        <section class="section" id="slide-heatmap">
+            <div class="slide-content">
+                <h2>Risk by Time of Day</h2>
+                <div id="heatmap-chart" class="chart-container"></div>
+            </div>
+        </section>
+
+        <!-- Slide 8 - Explanatory Factors -->
+        <section class="section" id="slide-why">
+            <div class="slide-content">
+                <h2>Why Injuries Occur</h2>
+                <div id="factor-chart" class="chart-container"></div>
+            </div>
+        </section>
+
+        <!-- Slide 9 - Estimator -->
+        <section class="section" id="slide-estimator">
+            <div class="slide-content">
+                <h2>Estimate Your Scenario</h2>
+                <div id="estimator-ui" class="chart-container"></div>
+            </div>
+        </section>
+
+        <!-- Slide 10 - Decision Chains -->
+        <section class="section" id="slide-chains">
+            <div class="slide-content">
+                <h2>Best vs Worst Risk Chains</h2>
+                <div id="chains-chart" class="chart-container"></div>
+            </div>
+        </section>
+
+        <!-- Slide 11 - Conclusion -->
+        <section class="section" id="slide-end">
+            <div class="slide-content">
+                <h2>Thanks for exploring with Group TBD</h2>
+                <p>Together, we can make NYC streets safer.</p>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- JS Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fullPage.js/4.0.20/fullpage.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+
+    <script>
+        new fullpage('#fullpage', {
+            navigation: true,
+            navigationPosition: 'right',
+            scrollOverflow: false,
+            scrollingSpeed: 500,
+            keyboardScrolling: true,
+            controlArrows: true,
+
+            afterLoad: function(origin, destination) {
+                if (destination.index === 0) {
+                    document.getElementById('hero-intro').classList.add('reveal');
+                }
+                if (destination.index === 3) {  // Slide 4
+                    if (typeof initLeafletMap === "function") {
+                        initLeafletMap();
+                    }
+                }
+            },
+
+            onLeave: function(origin, destination) {
+                if (origin.index === 0) {
+                    document.getElementById('hero-intro').classList.remove('reveal');
+                }
+            }
+        });
+    </script>
+
+    <!-- Data visualizations -->
+    <script src="js/main.js"></script>
+    <script src="js/analysis.js"></script>
+    <script src="js/dataLoader.js"></script>
+    <script src="js/dataProcessor.js"></script>
+    <script src="js/factorViz.js"></script>
+    <script src="js/leafletMap.js"></script>
+    <script src="js/regionMap.js"></script>
+    <script src="js/heatmapChart.js"></script>
+    <script src="js/extraViz.js"></script>
+
+    </body>
+    </html>
+
     <section class="section" id="slide-gender">
         <div class="slide-content">
             <h2>Male vs Female Drivers</h2>
@@ -78,15 +299,7 @@
         </div>
     </section>
 
-    <!-- Slide 6 - Dot Map -->
-    <section class="section" id="slide-map">
-        <div class="slide-content">
-            <h2>Accident Locations</h2>
-            <div id="dot-map" class="chart-container"></div>
-        </div>
-    </section>
-
-    <!-- Slide 8 - Heatmap -->
+    <!-- Slide 7 - Heatmap -->
     <section class="section" id="slide-heatmap">
         <div class="slide-content">
             <h2>Risk by Time of Day</h2>
@@ -94,7 +307,7 @@
         </div>
     </section>
 
-    <!-- Slide 9 - Explanatory Factors -->
+    <!-- Slide 8 - Explanatory Factors -->
     <section class="section" id="slide-why">
         <div class="slide-content">
             <h2>Why Injuries Occur</h2>
@@ -102,7 +315,7 @@
         </div>
     </section>
 
-    <!-- Slide 10 - Estimator -->
+    <!-- Slide 9 - Estimator -->
     <section class="section" id="slide-estimator">
         <div class="slide-content">
             <h2>Estimate Your Scenario</h2>
@@ -110,7 +323,7 @@
         </div>
     </section>
 
-    <!-- Slide 11 - Decision Chains -->
+    <!-- Slide 10 - Decision Chains -->
     <section class="section" id="slide-chains">
         <div class="slide-content">
             <h2>Best vs Worst Risk Chains</h2>
@@ -118,7 +331,7 @@
         </div>
     </section>
 
-    <!-- Slide 12 - Conclusion -->
+    <!-- Slide 11 - Conclusion -->
     <section class="section" id="slide-end">
         <div class="slide-content">
             <h2>Thanks for exploring with Group TBD</h2>
@@ -128,9 +341,11 @@
 
 </div>
 
-
 <!-- JS Libraries -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fullPage.js/4.0.20/fullpage.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
 
 <script>
     new fullpage('#fullpage', {
@@ -144,6 +359,11 @@
         afterLoad: function(origin, destination) {
             if (destination.index === 0) {
                 document.getElementById('hero-intro').classList.add('reveal');
+            }
+            if (destination.index === 3) {  // Slide 4
+                if (typeof initLeafletMap === "function") {
+                    initLeafletMap();
+                }
             }
         },
 
@@ -161,7 +381,7 @@
 <script src="js/dataLoader.js"></script>
 <script src="js/dataProcessor.js"></script>
 <script src="js/factorViz.js"></script>
-<script src="js/pointMap.js"></script>
+<script src="js/leafletMap.js"></script>
 <script src="js/regionMap.js"></script>
 <script src="js/heatmapChart.js"></script>
 <script src="js/extraViz.js"></script>

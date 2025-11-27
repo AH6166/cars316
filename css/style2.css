@@ -171,7 +171,6 @@ p {
     opacity: 1; /* do not animate fade in the iframe */
 }
 
-
 /* =========================================
    ANIMATIONS
 ========================================= */
@@ -200,4 +199,26 @@ p {
 
 #fp-nav {
     right: 45px !important;
+}
+
+.slide-desc {
+    margin-bottom: 1.6rem;
+    max-width: 900px;
+}
+
+.map-controls,
+.heatmap-controls,
+.est-form {
+    margin-bottom: 1rem;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+select {
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: none;
+    font-size: 1rem;
 }

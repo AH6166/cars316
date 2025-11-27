@@ -12,11 +12,27 @@ const height = window.innerHeight;
 
 const svg = d3.select("#chart").append("svg")
     .attr("width", width)
-    .attr("height", height);
+    .attr("height", height)
+    // New deep-navy background;
 
 const tooltip = d3.select("#tooltip");
 const yearSelect = d3.select("#yearSelect");
 const vehicleSelect = d3.select("#vehicleSelect");
+
+// ---------------------------
+// Color palette
+// ---------------------------
+// Sun: warm golden
+const sunColor = "#fbbf24";         // amber-300
+// Borough planets: varied cool/warm tones
+const boroughColorScale = d3.scaleOrdinal()
+    .domain(["BROOKLYN", "QUEENS", "MANHATTAN", "BRONX", "STATEN ISLAND"])
+    .range(["#38bdf8", "#22c55e", "#f97316", "#e11d48", "#a855f7"]);
+// Moons: soft violet
+const moonColor = "#c4b5fd";        // violet-300
+// Links
+const sunLinkColor = "#64748b";     // slate-500
+const moonLinkColor = "#94a3b8";    // slate-400
 
 // Glow Filter
 const defs = svg.append("defs");
@@ -29,6 +45,8 @@ feMerge.append("feMergeNode").attr("in", "SourceGraphic");
 // Layer for dynamic viz elements
 // Insert a transparent background rect before viz layer to capture pan/zoom gestures
 const vizLayer = svg.append("g").attr("class", "viz-layer");
+const initialScale = 0.85;
+vizLayer.attr("transform", `translate(${width/2}, ${height/2}) scale(${initialScale}) translate(${-width/2}, ${-height/2})`);
 const zoomBg = svg.insert("rect", "g.viz-layer")
     .attr("class", "zoom-bg")
     .attr("x", 0)
@@ -154,6 +172,22 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
         window.history.replaceState(null, "", newUrl);
     }
 
+    function simplifyFactorName(name) {
+        if (!name) return name;
+
+        name = name.trim();
+
+        if (name.includes("Inattention")) return "Driver Inattention";
+        if (name.includes("Failure to Yield")) return "Failure to Yield";
+        if (name.includes("Lane Usage")) return "Passing";
+        if (name.includes("Following Too Closely")) return "Tailgating";
+        if (name.includes("Backing")) return "Backing";
+        if (name.includes("Right-of-Way")) return "Failure to Yield";
+
+        // default fallback: keep first 2–3 words max
+        return name.split(" ").slice(0, 3).join(" ");
+    }
+
     // Build / rebuild visualization from filtered data
     function buildScene(filteredData) {
         vizLayer.selectAll("*").remove();
@@ -180,7 +214,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
             r: 140,
             x: center.x,
             y: center.y,
-            color: "#e33e3e"
+            color: sunColor
         });
 
         // BOROUGHS
@@ -193,7 +227,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
                 baseAngle: ang,
                 r: radiusScale(boroughCounts[b]),
                 noiseOffset: Math.random() * 20000,
-                color: "#fd9915",
+                color: boroughColorScale(b),
                 x: center.x + orbitRadius * Math.cos(ang),
                 y: center.y + orbitRadius * Math.sin(ang)
             });
@@ -204,7 +238,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
         boroughs.forEach(b => factorCounts[b] = {});
 
         filteredData.forEach(d => {
-            const f = d.CONTRIBUTING_FACTOR_1?.trim();
+            const f = simplifyFactorName(d.CONTRIBUTING_FACTOR_1);
             if (f && f !== "Unspecified") {
                 factorCounts[d.BOROUGH][f] =
                     (factorCounts[d.BOROUGH][f] || 0) + 1;
@@ -245,7 +279,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
                     x: parent.x,
                     y: parent.y,
                     noiseOffset: Math.random() * 20000,
-                    color: "#785740"
+                    color: moonColor
                 });
             });
         });
@@ -258,18 +292,18 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
             .selectAll("line.sunLink")
             .data(planetLinks)
             .enter().append("line")
-            .attr("stroke", "#94a3b8")
+            .attr("stroke", sunLinkColor)
             .attr("stroke-width", 2)
-            .attr("opacity", 0.7)
+            .attr("opacity", 0.75)
             .attr("filter", "url(#soft-glow)");
 
         moonLinks = vizLayer.append("g")
             .selectAll("line.moonLink")
             .data(moonNodes)
             .enter().append("line")
-            .attr("stroke", "#c8c8c8")
+            .attr("stroke", moonLinkColor)
             .attr("stroke-width", 1.3)
-            .attr("opacity", 0.75);
+            .attr("opacity", 0.8);
 
         planetCircles = vizLayer.append("g")
             .selectAll("circle.planet")
@@ -278,6 +312,13 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
             .attr("class", "planet")
             .attr("r", d => d.r)
             .attr("fill", d => d.color)
+            .attr("filter", d => d.type === "sun" ? "url(#soft-glow)" : null)
+            .on("mouseover", function () {
+                d3.select(this).attr("stroke", "#e5e7eb").attr("stroke-width", 2.5);
+            })
+            .on("mouseout", function () {
+                d3.select(this).attr("stroke", null).attr("stroke-width", null);
+            })
             .call(
                 d3.drag()
                     .on("start", (e, d) => { e.sourceEvent?.stopPropagation?.(); d.dragging = (d.type === "borough"); })
@@ -292,8 +333,15 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
             .attr("class", "moon")
             .attr("r", d => d.r)
             .attr("fill", d => d.color)
+            .attr("stroke", "#0f172a")
             .attr("stroke-width", 1)
-            .style("opacity", 0.93)
+            .style("opacity", 0.96)
+            .on("mouseover", function () {
+                d3.select(this).attr("stroke-width", 2);
+            })
+            .on("mouseout", function () {
+                d3.select(this).attr("stroke-width", 1);
+            })
             .call(
                 d3.drag()
                     .on("start", (e, d) => { e.sourceEvent?.stopPropagation?.(); d.dragging = true; })
@@ -307,7 +355,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
             .data(nodes)
             .enter().append("text")
             .attr("text-anchor", "middle")
-            .style("fill", "#e5edff")
+            .style("fill", "#e0f2fe")
             .style("pointer-events", "none")
             .each(function (d) {
                 const t = d3.select(this);
@@ -330,7 +378,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
             .data(moonNodes)
             .enter().append("text")
             .attr("text-anchor", "middle")
-            .style("fill", "#cbd5e1")
+            .style("fill", "#ffffff")
             .style("pointer-events", "none")
             .style("font-size", "13px")
             .each(function (d) {
@@ -345,7 +393,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
                         label.append("tspan")
                             .text(line.join(" "))
                             .attr("x", 0)
-                            .attr("dy", lineNum === 0 ? -d.r - 8 : 14); // original offset
+                            .attr("dy", lineNum === 0 ? -d.r - 8 : 14);
                         line = [w];
                         lineNum++;
                     }
@@ -355,7 +403,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
                     label.append("tspan")
                         .text(line.join(" "))
                         .attr("x", 0)
-                        .attr("dy", lineNum === 0 ? -d.r - 8 : 14); // original offset
+                        .attr("dy", lineNum === 0 ? -d.r - 8 : 14);
                 }
 
                 label.append("tspan")
@@ -427,6 +475,13 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
                 const ty = p.y + m.offsetY + smoothNoise(t, m.noiseOffset + 2000) * 3;
                 m.x += (tx - m.x) * 0.08;
                 m.y += (ty - m.y) * 0.08;
+            }
+        });
+
+        nodes.forEach(n => {
+            if (n.type === "borough") {
+                n.x = Math.max(n.r, Math.min(width - n.r, n.x));
+                n.y = Math.max(n.r, Math.min(height - n.r, n.y));
             }
         });
 
