@@ -2,8 +2,10 @@
 // Exports: renderHeatmap(containerId, model)
 // model: { months, hours, grid, globalMax }
 
-export function renderHeatmap(containerId, model) {
+export function renderHeatmap(containerId, model, opts = {}) {
   const { months, hours, grid, globalMax } = model;
+  const mode = opts.mode === 'perColumn' ? 'perColumn' : 'global';
+  const injuryMode = !!opts.injuryMode;
   const container = document.getElementById(containerId.replace('#','')) || document.querySelector(containerId);
   if (!container) throw new Error(`Container ${containerId} not found`);
 
@@ -62,20 +64,39 @@ export function renderHeatmap(containerId, model) {
     .paddingInner(0)
     .paddingOuter(0);
 
-  // Color scale helpers: build a scale from a set of counts using percentile normalization with linear fallback
+  // Precompute per-month totals for per-column normalization
+  const monthTotals = new Map();
+  for (const d of grid) {
+    const k = +d.month;
+    monthTotals.set(k, (monthTotals.get(k) || 0) + d.count);
+  }
+
+  // Value accessor based on mode or injury mode
+  const valueOf = (d) => {
+    if (injuryMode) {
+      return d.rate || 0;
+    }
+    if (mode === 'perColumn') {
+      const tot = monthTotals.get(+d.month) || 0;
+      return tot > 0 ? d.count / tot : 0;
+    }
+    return d.count;
+  };
+
+  // Color scale helpers: build a scale from a set of values using percentile normalization with linear fallback
   // Use a green → yellow → red palette (low = green, high = red)
-  const allCounts = grid.map(d => d.count);
+  const allValues = grid.map(valueOf); const isPct = injuryMode;
   const greenToRed = t => d3.interpolateRdYlGn(1 - t);
-  function buildColorScale(countsArr) {
-    const arr = (countsArr && countsArr.length) ? countsArr : allCounts;
+  function buildColorScale(valsArr) {
+    const arr = (valsArr && valsArr.length) ? valsArr : allValues;
     const allZeroLocal = arr.every(c => c === 0);
     if (!allZeroLocal && d3.scaleSequentialQuantile) {
       return d3.scaleSequentialQuantile(arr, greenToRed);
     }
-    const maxLocal = Math.max(1, d3.max(arr) || globalMax || 1);
+    const maxLocal = Math.max(1e-9, d3.max(arr) || (mode === 'perColumn' ? 1 : (globalMax || 1)));
     return d3.scaleSequential().domain([0, maxLocal]).interpolator(greenToRed);
   }
-  let color = buildColorScale(allCounts);
+  let color = buildColorScale(allValues);
 
   // Clip path to keep drawing within chart area during panning
   const clipId = 'clip-' + Math.random().toString(36).slice(2);
@@ -116,7 +137,7 @@ export function renderHeatmap(containerId, model) {
     .join('rect')
     .attr('y', d => y(d.hour))
     .attr('height', y.bandwidth())
-    .attr('fill', d => color(d.count));
+    .attr('fill', d => color(valueOf(d))); 
 
   function cellWidth() {
     const w = xTime(d3.timeMonth.offset(months[0], 1)) - xTime(months[0]);
@@ -133,10 +154,13 @@ export function renderHeatmap(containerId, model) {
   const tooltip = d3.select('#tooltip');
   const fmtMonth = d3.timeFormat('%b %Y');
   const svgNode = svg.node();
+  const fmtPct = d3.format('.1%'); const fmtNum = d3.format('~s');
 
   cell
     .style('cursor', 'pointer')
     .on('mousemove', function(event, d) {
+      const val = valueOf(d);
+      const valLine = injuryMode ? `Injury rate: ${fmtPct(val)} (${d.injured||0} of ${d.count||0})` : (mode === 'perColumn' ? `Share this month: ${fmtPct(val)}` : `Accidents: ${d.count}`);
       tooltip
         .style('left', (event.pageX) + 'px')
         .style('top', (event.pageY - 8) + 'px')
@@ -144,7 +168,7 @@ export function renderHeatmap(containerId, model) {
         .html(`
           <strong>${fmtMonth(new Date(+d.month))}</strong><br>
           Hour: ${String(d.hour).padStart(2, '0')}:00<br>
-          Accidents: ${d.count}
+          ${valLine}
         `);
       d3.select(this)
         .attr('stroke', '#19e3ff')
@@ -181,19 +205,7 @@ export function renderHeatmap(containerId, model) {
     .attr('class', 'axis y-axis')
     .call(yAxis);
 
-  // Axis labels
-  svg.append('text')
-    .attr('x', margin.left + innerW / 2)
-    .attr('y', margin.top + innerH + 40)
-    .attr('fill', 'var(--muted)')
-    .attr('text-anchor', 'middle')
-    .text('Month');
-
-  svg.append('text')
-    .attr('transform', `translate(16, ${margin.top + innerH / 2}) rotate(-90)`) 
-    .attr('fill', 'var(--muted)')
-    .attr('text-anchor', 'middle')
-    .text('Hour of day');
+  // Note: removed static X-axis unit label ('Month') to keep axes dynamic
 
   // Legend (dynamic: updates when color scale changes)
   // External legend container just below the chart container
@@ -205,7 +217,7 @@ export function renderHeatmap(containerId, model) {
     if (!legendHost) return;
     legendHost.innerHTML = '';
     const hostW = Math.max(180, Math.min(400, legendHost.clientWidth || width));
-    const hostH = 36;
+    const hostH = 56;
 
     const lsvg = d3.select(legendHost).append('svg')
       .attr('width', hostW)
@@ -217,18 +229,22 @@ export function renderHeatmap(containerId, model) {
       .attr('y1', '0%').attr('y2', '0%');
 
     const steps = 10;
-    const arr = (countsArr && countsArr.length) ? countsArr : allCounts;
+    const arr = (countsArr && countsArr.length) ? countsArr : allValues;
     const allZeroLocal = arr.every(c => c === 0);
     const useQuantileLocal = !allZeroLocal && !!d3.scaleSequentialQuantile;
     const sortedLocal = arr.slice().sort(d3.ascending);
     if (useQuantileLocal) {
       d3.range(0, steps + 1).forEach(i => {
         const t = i / steps;
-        const q = d3.quantileSorted(sortedLocal, t);
+        let q = d3.quantileSorted(sortedLocal, t);
+        if (injuryMode) {
+          // Clamp percent-like quantities to [0,1] for injury mode
+          q = Math.max(0, Math.min(1, q || 0));
+        }
         lgdefs.append('stop').attr('offset', `${t * 100}%`).attr('stop-color', clr(q));
       });
     } else {
-      const maxLocal = Math.max(1, d3.max(arr) || globalMax || 1);
+      const maxLocal = injuryMode ? 1 : Math.max(1, d3.max(arr) || globalMax || 1);
       d3.range(0, steps + 1).forEach(i => {
         const t = i / steps;
         lgdefs.append('stop').attr('offset', `${t * 100}%`).attr('stop-color', clr(t * maxLocal));
@@ -249,21 +265,26 @@ export function renderHeatmap(containerId, model) {
 
     const legendScale = useQuantileLocal
       ? d3.scaleLinear().domain([0, 1]).range([padX, padX + legendW2])
-      : d3.scaleLinear().domain([0, Math.max(1, d3.max(arr) || globalMax || 1)]).range([padX, padX + legendW2]);
+      : d3.scaleLinear().domain([0, (injuryMode ? 1 : Math.max(1, d3.max(arr) || globalMax || 1))]).range([padX, padX + legendW2]);
 
     let legendAxis;
     if (useQuantileLocal) {
       const ticksP = [0, 0.25, 0.5, 0.75, 0.9, 1];
-      const fmt = d3.format('~s');
+      const fmtNum = d3.format('~s');
+      const fmtPct = d3.format('.0%');
       legendAxis = d3.axisBottom(legendScale)
         .tickValues(ticksP)
         .tickSize(4)
-        .tickFormat(p => fmt(d3.quantileSorted(sortedLocal, p) || 0));
+        .tickFormat(p => {
+          let q = d3.quantileSorted(sortedLocal, p) || 0;
+          if (injuryMode) q = Math.max(0, Math.min(1, q));
+          return injuryMode ? fmtPct(q) : fmtNum(q);
+        });
     } else {
       legendAxis = d3.axisBottom(legendScale)
         .ticks(5)
         .tickSize(4)
-        .tickFormat(d3.format('~s'));
+        .tickFormat(injuryMode ? d3.format('.0%') : d3.format('~s'));
     }
 
     lsvg.append('g')
@@ -274,10 +295,10 @@ export function renderHeatmap(containerId, model) {
       .attr('x', hostW / 2)
       .attr('y', 32)
       .attr('text-anchor', 'middle')
-      .text(useQuantileLocal ? 'Accident frequency (percentiles)' : 'Accident frequency');
+      .text(injuryMode ? (useQuantileLocal ? 'Injury rate (percentiles)' : 'Injury rate') : (useQuantileLocal ? 'Accident frequency (percentiles)' : 'Accident frequency'));
   }
 
-  renderLegendFor(allCounts, color);
+  renderLegendFor(allValues, color);
 
   // --- Interactions ---
   // Horizontal zoom/pan on date axis
@@ -296,10 +317,10 @@ export function renderHeatmap(containerId, model) {
       positionCells();
       // Re-normalize colors based on visible month window
       const [d0, d1] = xTime.domain();
-      const visibleCounts = grid.filter(c => c.month >= d0 && c.month <= d1).map(c => c.count);
-      color = buildColorScale(visibleCounts);
-      cell.attr('fill', d => color(d.count));
-      renderLegendFor(visibleCounts, color);
+      const visibleVals = grid.filter(c => c.month >= d0 && c.month <= d1).map(c => valueOf(c));
+      color = buildColorScale(visibleVals);
+      cell.attr('fill', d => color(valueOf(d)));
+      renderLegendFor(visibleVals, color);
     });
 
   // Attach zoom to the SVG so dragging over cells still works

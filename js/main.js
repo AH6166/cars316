@@ -40,10 +40,16 @@ function filterPointsByHour(arr, hour) {
   return arr.filter(p => p && Number.isFinite(p.hour) && p.hour === hour);
 }
 
+function isChecked(id) {
+  const el = document.getElementById(id);
+  return !!(el && el.checked);
+}
+
 function renderMapForCurrentHour(allPoints) {
   const hour = getSelectedHour();
   const filtered = filterPointsByHour(allPoints || [], hour);
-  renderLeafletNYC(LEAFLET_CONTAINER_ID, filtered, { dotColor: '#e60026' });
+  const injuryMode = isChecked('map-injury-mode');
+  renderLeafletNYC(LEAFLET_CONTAINER_ID, filtered, { dotColor: '#e60026', injuryMode });
 }
 const HEATMAP_CONTAINER_ID = 'chart';
 const MAP_CONTAINER_ID = 'map';
@@ -54,8 +60,7 @@ let model = null;
 let points = null;
 let factors = null;
 let collisions = null; // raw collision rows with dates and hours
-let analysisData = null; // rows for factor analysis and smart estimator
-let marginalsCache = null; // cached marginal EB stats for estimator
+let analysisData = null; // rows for factor analysis
 
 function renderTimeInsight(rows) {
   try {
@@ -99,42 +104,7 @@ function renderTimeInsight(rows) {
   }
 }
 
-function buildMarginals(rows) {
-  const N = rows.length;
-  const injuredTotal = rows.reduce((a, r) => a + (r.injured ? 1 : 0), 0);
-  const baseRate = injuredTotal / Math.max(1, N);
-  const priorK = 50;
-  function ebRate(a, n) {
-    return (a + priorK * baseRate) / (n + priorK);
-  }
-  // factors to index
-  const keys = ['preCrash','vehicleType','driverSex','borough','hour','factor1'];
-  const maps = {};
-  for (const key of keys) {
-    const m = new Map();
-    rows.forEach(r => {
-      let v = r[key];
-      if (key === 'hour') v = Number.isFinite(r.hour) ? r.hour : null;
-      v = cleanCat(v);
-      if (v == null) return;
-      let entry = m.get(v);
-      if (!entry) { entry = { n: 0, a: 0 }; m.set(v, entry); }
-      entry.n += 1;
-      if (r.injured) entry.a += 1;
-    });
-    // compute EB rate and OR vs baseline
-    const out = new Map();
-    m.forEach((c, v) => {
-      const rate = ebRate(c.a, c.n);
-      const odds = rate / Math.max(1e-9, 1 - rate);
-      const baseOdds = baseRate / Math.max(1e-9, 1 - baseRate);
-      const or = odds / Math.max(1e-9, baseOdds);
-      out.set(v, { n: c.n, a: c.a, rate, or });
-    });
-    maps[key] = out;
-  }
-  return { baseRate, maps };
-}
+
 
 async function init() {
   try {
@@ -147,7 +117,6 @@ async function init() {
     model = buildGrid(raw);
     points = locs;
     analysisData = analysisRows;
-    marginalsCache = buildMarginals(analysisRows);
     factors = analyzeFactors(analysisRows);
 
     // Setup slider interactions
@@ -160,19 +129,42 @@ async function init() {
       updateHourLabel();
     }
 
-    renderHeatmap(HEATMAP_CONTAINER_ID, model);
+    const mode = getHeatmapMode();
+    const hmInjury = isChecked('hm-injury-mode');
+    renderHeatmap(HEATMAP_CONTAINER_ID, model, { mode, injuryMode: hmInjury });
     renderTimeInsight(collisions);
-    // Render Leaflet map filtered to selected hour with red dots
+    // Render Leaflet map filtered to selected hour (injury mode handled inside)
     renderMapForCurrentHour(points);
-    renderFactorChart(FACTOR_CONTAINER_ID, factors);
+    const facInjury = isChecked('factors-injury-mode');
+    renderFactorChart(FACTOR_CONTAINER_ID, factors, { injuryMode: facInjury });
 
     // Render quick snapshot charts
     try {
       renderQuickCharts(analysisData);
     } catch (e) { /* ignore */ }
 
-    // Initialize smart estimator UI
-    initSmartEstimator();
+    initHeatmapToggle();
+
+    // Hook up other injury toggles
+    const mapInj = document.getElementById('map-injury-mode');
+    if (mapInj) mapInj.addEventListener('change', () => renderMapForCurrentHour(points));
+
+    const facInjEl = document.getElementById('factors-injury-mode');
+    if (facInjEl) facInjEl.addEventListener('change', () => {
+      const facInjury2 = isChecked('factors-injury-mode');
+      renderFactorChart(FACTOR_CONTAINER_ID, factors, { injuryMode: facInjury2 });
+    });
+
+    // Initialize injury risk estimator
+    initEstimator(analysisData);
+    try { if (estModel) renderRiskChains('viz-chains', analysisData, estModel); } catch (e) { /* ignore */ }
+
+    const dowInj = document.getElementById('dow-injury-mode');
+    if (dowInj) dowInj.addEventListener('change', () => { try { renderQuickCharts(analysisData); } catch(e) {} });
+    const vehInj = document.getElementById('vehicle-injury-mode');
+    if (vehInj) vehInj.addEventListener('change', () => { try { renderQuickCharts(analysisData); } catch(e) {} });
+    const genInj = document.getElementById('gender-injury-mode');
+    if (genInj) genInj.addEventListener('change', () => { try { renderQuickCharts(analysisData); } catch(e) {} });
   } catch (err) {
     console.error(err);
     const heatEl = document.getElementById(HEATMAP_CONTAINER_ID);
@@ -194,40 +186,67 @@ function debounce(fn, wait) {
 
 const onResize = debounce(() => {
   if (model) {
-    renderHeatmap(HEATMAP_CONTAINER_ID, model);
+    const mode = getHeatmapMode();
+    const hmInjury = isChecked('hm-injury-mode');
+    renderHeatmap(HEATMAP_CONTAINER_ID, model, { mode, injuryMode: hmInjury });
   }
   // Re-render combined Leaflet map with current hour filter
   renderMapForCurrentHour(points || []);
   if (factors) {
-    renderFactorChart(FACTOR_CONTAINER_ID, factors);
+    const facInjury = isChecked('factors-injury-mode');
+    renderFactorChart(FACTOR_CONTAINER_ID, factors, { injuryMode: facInjury });
   }
   // Re-render quick snapshot charts
   try { if (analysisData) renderQuickCharts(analysisData); } catch (e) { /* ignore */ }
-  // Re-render the smart comparison chart, preserving current selection
-  try {
-    const out = document.getElementById('smart-results');
-    if (analysisData && out) {
-      const choice = getCurrentChoice();
-      const est = estimateRisk(choice, analysisData);
-      renderEstimate(out, est, choice); // this will internally call renderSmartChart
-    }
-  } catch (e) { /* ignore */ }
+  // Re-render risk chains
+  try { if (analysisData && estModel) renderRiskChains('viz-chains', analysisData, estModel); } catch (e) { /* ignore */ }
 }, 150);
 
 window.addEventListener('resize', onResize);
 
+function getHeatmapMode() {
+  const rb = document.querySelector('input[name="hm-norm"]:checked');
+  return rb ? rb.value : 'global';
+}
+
+function initHeatmapToggle() {
+  const radios = document.querySelectorAll('input[name="hm-norm"]');
+  if (radios && radios.length) {
+    radios.forEach(r => r.addEventListener('change', () => {
+      if (model) {
+        const mode = getHeatmapMode();
+        const hmInjury = isChecked('hm-injury-mode');
+        renderHeatmap(HEATMAP_CONTAINER_ID, model, { mode, injuryMode: hmInjury });
+      }
+    }));
+  }
+  const inj = document.getElementById('hm-injury-mode');
+  if (inj) {
+    inj.addEventListener('change', () => {
+      if (model) {
+        const mode = getHeatmapMode();
+        const hmInjury = isChecked('hm-injury-mode');
+        renderHeatmap(HEATMAP_CONTAINER_ID, model, { mode, injuryMode: hmInjury });
+      }
+    });
+  }
+}
+
 // ---- Quick simple visualizations (intro) ----
 function renderQuickCharts(rows) {
-  try { renderDoWChart('viz-dow', rows); } catch(e) { /* ignore */ }
-  try { renderVehicleChart('viz-vehicle', rows); } catch(e) { /* ignore */ }
-  try { renderGenderChart('viz-gender', rows); } catch(e) { /* ignore */ }
+  const dowInjury = isChecked('dow-injury-mode');
+  const vehInjury = isChecked('vehicle-injury-mode');
+  const genInjury = isChecked('gender-injury-mode');
+  try { renderDoWChart('viz-dow', rows, { injuryMode: dowInjury }); } catch(e) { /* ignore */ }
+  try { renderVehicleChart('viz-vehicle', rows, { injuryMode: vehInjury }); } catch(e) { /* ignore */ }
+  try { renderGenderChart('viz-gender', rows, { injuryMode: genInjury }); } catch(e) { /* ignore */ }
 }
 
 function ebShrink(a, n, baseRate, k = 50) {
   return (a + k * baseRate) / (n + k);
 }
 
-function renderDoWChart(containerId, rows) {
+function renderDoWChart(containerId, rows, opts = {}) {
   const el = document.getElementById(containerId);
   if (!el) return; el.innerHTML = '';
   const width = el.clientWidth || 320; const height = el.clientHeight || 240;
@@ -241,40 +260,47 @@ function renderDoWChart(containerId, rows) {
   if (!data.length) { g.append('text').attr('x', innerW/2).attr('y', innerH/2).attr('text-anchor','middle').attr('fill','var(--muted)').text('No data'); return; }
   const N = data.length; const inj = d3.sum(data, r=>r.injured?1:0); const base = inj/Math.max(1,N);
   const by = d3.rollups(data, v=>({ n:v.length, a:d3.sum(v,r=>r.injured?1:0) }), r=>r.dow);
-  const order = [0,1,2,3,4,5,6];
+  // Order Monday (1) to Sunday (0)
+  const order = [1,2,3,4,5,6,0];
   const labels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const items = order.map(dow=>{
     const rec = by.find(d=>d[0]===dow)?.[1] || {n:0,a:0};
     const rate = ebShrink(rec.a, rec.n, base);
     return { key: dow, label: labels[dow], n: rec.n, a: rec.a, rate };
   });
-  items.sort((a,b)=> d3.descending(a.rate,b.rate));
+  // Do not sort by rate; keep Mon→Sun order for readability
 
   const x = d3.scaleBand().domain(items.map(d=>d.label)).range([0, innerW]).padding(0.25);
-  const y = d3.scaleLinear().domain([0, d3.max(items,d=>d.rate)||0.01]).nice().range([innerH, 0]);
+  const useRate = !!opts.injuryMode;
+  const y = d3.scaleLinear().domain([0, d3.max(items,d=> useRate ? d.rate : d.n)||0.01]).nice().range([innerH, 0]);
 
   const bars = g.selectAll('rect').data(items).join('rect')
-    .attr('x', d=>x(d.label)).attr('y', d=>y(d.rate)).attr('width', x.bandwidth()).attr('height', d=>innerH - y(d.rate))
+    .attr('x', d=>x(d.label)).attr('y', d=>y(useRate ? d.rate : d.n)).attr('width', x.bandwidth()).attr('height', d=>innerH - y(useRate ? d.rate : d.n))
     .attr('fill', '#e11d48').attr('opacity', 0.9).attr('rx', 3);
 
   const xAxis = d3.axisBottom(x);
-  const yAxis = d3.axisLeft(y).ticks(4).tickFormat(d3.format('.0%'));
+  const yAxis = useRate ? d3.axisLeft(y).ticks(4).tickFormat(d3.format('.0%')) : d3.axisLeft(y).ticks(4).tickFormat(d3.format('~s'));
   g.append('g').attr('transform', `translate(0,${innerH})`).call(xAxis);
   g.append('g').call(yAxis);
 
-  // baseline
-  const baseY = y(base);
-  g.append('line').attr('x1',0).attr('x2',innerW).attr('y1',baseY).attr('y2',baseY).attr('stroke','#94a3b8').attr('stroke-dasharray','4,4');
-  g.append('text').attr('x', innerW).attr('y', baseY-6).attr('text-anchor','end').attr('fill','var(--muted)').text('Baseline');
+  // baseline only for rate mode
+  if (useRate) {
+    const baseY = y(base);
+    g.append('line').attr('x1',0).attr('x2',innerW).attr('y1',baseY).attr('y2',baseY).attr('stroke','#94a3b8').attr('stroke-dasharray','4,4');
+    g.append('text').attr('x', innerW).attr('y', baseY-6).attr('text-anchor','end').attr('fill','var(--muted)').text('Baseline');
+  }
 
   const tooltip = d3.select('#tooltip'); const fmtPct = d3.format('.1%');
+  const fmtNum = d3.format('~s');
   bars.on('mousemove', (event,d)=>{
+    const val = useRate ? fmtPct(d.rate) : fmtNum(d.n);
+    const label = useRate ? `EB rate: ${val}` : `Crashes: ${val}`;
     tooltip.style('left', event.pageX+'px').style('top',(event.pageY-8)+'px').style('opacity',1)
-      .html(`<strong>${d.label}</strong><br>EB rate: ${fmtPct(d.rate)}<br>n = ${d.n.toLocaleString()}`);
+      .html(`<strong>${d.label}</strong><br>${label}<br>n = ${d.n.toLocaleString()}`);
   }).on('mouseout', ()=> tooltip.style('opacity',0));
 }
 
-function renderVehicleChart(containerId, rows) {
+function renderVehicleChart(containerId, rows, opts = {}) {
   const el = document.getElementById(containerId);
   if (!el) return; el.innerHTML = '';
   const width = el.clientWidth || 320; const height = el.clientHeight || 240;
@@ -295,33 +321,38 @@ function renderVehicleChart(containerId, rows) {
   const vehExclude = new Set(['4 dr sedan', 'taxi', 'tractor truck diesel']);
   items = items.filter(d => !vehExclude.has(String(d.label).toLowerCase()));
   items.sort((a,b)=> d3.descending(a.n,b.n));
-  const top = items.slice(0, 8);
-  top.sort((a,b)=> d3.descending(a.rate,b.rate));
+  let top = items.slice(0, 8);
+  const useRate = !!opts.injuryMode;
+  // Sort by chosen metric for display order
+  top.sort((a,b)=> d3.descending(useRate ? a.rate : a.n, useRate ? b.rate : b.n));
 
   const y = d3.scaleBand().domain(top.map(d=>d.label)).range([0, innerH]).padding(0.25);
-  const x = d3.scaleLinear().domain([0, d3.max(top,d=>d.rate)||0.01]).nice().range([0, innerW]);
+  const x = d3.scaleLinear().domain([0, d3.max(top,d=> useRate ? d.rate : d.n)||0.01]).nice().range([0, innerW]);
 
   const bars = g.selectAll('rect').data(top).join('rect')
-    .attr('y', d=>y(d.label)).attr('x', 0).attr('height', y.bandwidth()).attr('width', d=>x(d.rate))
+    .attr('y', d=>y(d.label)).attr('x', 0).attr('height', y.bandwidth()).attr('width', d=>x(useRate ? d.rate : d.n))
     .attr('fill', '#e11d48').attr('opacity', 0.9).attr('rx', 3);
 
-  const xAxis = d3.axisBottom(x).ticks(4).tickFormat(d3.format('.0%'));
+  const xAxis = useRate ? d3.axisBottom(x).ticks(4).tickFormat(d3.format('.0%')) : d3.axisBottom(x).ticks(4).tickFormat(d3.format('~s'));
   const yAxis = d3.axisLeft(y).tickSizeOuter(0);
   g.append('g').attr('transform', `translate(0,${innerH})`).call(xAxis);
   g.append('g').call(yAxis);
 
-  const baseX = x(base);
-  g.append('line').attr('x1', baseX).attr('x2', baseX).attr('y1',0).attr('y2',innerH).attr('stroke','#94a3b8').attr('stroke-dasharray','4,4');
-  g.append('text').attr('x', baseX+4).attr('y', 12).attr('fill','var(--muted)').text('Baseline');
+  if (useRate) {
+    const baseX = x(base);
+    g.append('line').attr('x1', baseX).attr('x2', baseX).attr('y1',0).attr('y2',innerH).attr('stroke','#94a3b8').attr('stroke-dasharray','4,4');
+    g.append('text').attr('x', baseX+4).attr('y', 12).attr('fill','var(--muted)').text('Baseline');
+  }
 
-  const tooltip = d3.select('#tooltip'); const fmtPct = d3.format('.1%');
+  const tooltip = d3.select('#tooltip'); const fmtPct = d3.format('.1%'); const fmtNum = d3.format('~s');
   bars.on('mousemove', (event,d)=>{
+    const label = useRate ? `EB rate: ${fmtPct(d.rate)}` : `Crashes: ${fmtNum(d.n)}`;
     tooltip.style('left', event.pageX+'px').style('top',(event.pageY-8)+'px').style('opacity',1)
-      .html(`<strong>${d.label}</strong><br>EB rate: ${fmtPct(d.rate)}<br>n = ${d.n.toLocaleString()}`);
+      .html(`<strong>${d.label}</strong><br>${label}<br>n = ${d.n.toLocaleString()}`);
   }).on('mouseout', ()=> tooltip.style('opacity',0));
 }
 
-function renderGenderChart(containerId, rows) {
+function renderGenderChart(containerId, rows, opts = {}) {
   const el = document.getElementById(containerId);
   if (!el) return; el.innerHTML = '';
   const width = el.clientWidth || 320; const height = el.clientHeight || 240;
@@ -348,80 +379,35 @@ function renderGenderChart(containerId, rows) {
   items.sort((a,b)=> desired.indexOf(a.label) - desired.indexOf(b.label));
 
   const x = d3.scaleBand().domain(items.map(d=>d.label)).range([0, innerW]).padding(0.35);
-  const y = d3.scaleLinear().domain([0, d3.max(items,d=>d.rate)||0.01]).nice().range([innerH, 0]);
+  const useRate = !!opts.injuryMode;
+  const y = d3.scaleLinear().domain([0, d3.max(items,d=> useRate ? d.rate : d.n)||0.01]).nice().range([innerH, 0]);
 
   const color = d => (d.label==='Male' ? '#ef4444' : d.label==='Female' ? '#10b981' : '#94a3b8');
 
   const bars = g.selectAll('rect').data(items).join('rect')
-    .attr('x', d=>x(d.label)).attr('y', d=>y(d.rate)).attr('width', x.bandwidth()).attr('height', d=>innerH - y(d.rate))
+    .attr('x', d=>x(d.label)).attr('y', d=>y(useRate ? d.rate : d.n)).attr('width', x.bandwidth()).attr('height', d=>innerH - y(useRate ? d.rate : d.n))
     .attr('fill', d=>color(d)).attr('opacity', 0.9).attr('rx', 3);
 
   const xAxis = d3.axisBottom(x);
-  const yAxis = d3.axisLeft(y).ticks(4).tickFormat(d3.format('.0%'));
+  const yAxis = useRate ? d3.axisLeft(y).ticks(4).tickFormat(d3.format('.0%')) : d3.axisLeft(y).ticks(4).tickFormat(d3.format('~s'));
   g.append('g').attr('transform', `translate(0,${innerH})`).call(xAxis);
   g.append('g').call(yAxis);
 
-  const baseY = y(base);
-  g.append('line').attr('x1',0).attr('x2',innerW).attr('y1',baseY).attr('y2',baseY).attr('stroke','#94a3b8').attr('stroke-dasharray','4,4');
-  g.append('text').attr('x', innerW).attr('y', baseY-6).attr('text-anchor','end').attr('fill','var(--muted)').text('Baseline');
+  if (useRate) {
+    const baseY = y(base);
+    g.append('line').attr('x1',0).attr('x2',innerW).attr('y1',baseY).attr('y2',baseY).attr('stroke','#94a3b8').attr('stroke-dasharray','4,4');
+    g.append('text').attr('x', innerW).attr('y', baseY-6).attr('text-anchor','end').attr('fill','var(--muted)').text('Baseline');
+  }
 
-  const tooltip = d3.select('#tooltip'); const fmtPct = d3.format('.1%');
+  const tooltip = d3.select('#tooltip'); const fmtPct = d3.format('.1%'); const fmtNum = d3.format('~s');
   bars.on('mousemove', (event,d)=>{
+    const label = useRate ? `EB rate: ${fmtPct(d.rate)}` : `Crashes: ${fmtNum(d.n)}`;
     tooltip.style('left', event.pageX+'px').style('top',(event.pageY-8)+'px').style('opacity',1)
-      .html(`<strong>${d.label}</strong><br>EB rate: ${fmtPct(d.rate)}<br>n = ${d.n.toLocaleString()}`);
+      .html(`<strong>${d.label}</strong><br>${label}<br>n = ${d.n.toLocaleString()}`);
   }).on('mouseout', ()=> tooltip.style('opacity',0));
 }
 
-// Smart estimator (Chapter 3)
-function initSmartEstimator() {
-  try {
-    if (!analysisData || !analysisData.length) return;
-    const actionSel = document.getElementById('sf-action');
-    const vehSel = document.getElementById('sf-vehicle');
-    const genSel = document.getElementById('sf-gender');
-    const borSel = document.getElementById('sf-borough');
-    const hourSel = document.getElementById('sf-hour');
-    const fac1Sel = document.getElementById('sf-factor1');
-    const out = document.getElementById('smart-results');
-    if (!actionSel || !vehSel || !genSel || !out) return;
 
-    // Populate options from data (sorted by frequency)
-    populateSelect(actionSel, distinctByFreq(analysisData.map(r => cleanCat(r.preCrash))));
-    // Exclude a few noisy vehicle-type categories from the dropdown and normalize labels
-    const vehExclude = new Set(['4 dr sedan', 'taxi', 'tractor truck diesel']);
-    const vehList = distinctByFreq(analysisData.map(r => normalizeVehicleLabel(cleanCat(r.vehicleType)))).filter(v => v && !vehExclude.has(v.toLowerCase()));
-    populateSelect(vehSel, vehList);
-    populateSelect(genSel, distinctByFreq(analysisData.map(r => cleanCat(r.driverSex))));
-    if (borSel) populateSelect(borSel, distinctByFreq(analysisData.map(r => cleanCat(r.borough))));
-    if (fac1Sel) populateSelect(fac1Sel, distinctByFreq(analysisData.map(r => cleanCat(r.factor1))));
-    if (hourSel) populateHourSelect(hourSel, analysisData);
-
-    const onChange = () => {
-      const choice = {
-        preCrash: valueOrNull(actionSel.value),
-        vehicleType: valueOrNull(vehSel.value),
-        driverSex: valueOrNull(genSel.value),
-        borough: borSel ? valueOrNull(borSel.value) : null,
-        hour: hourSel ? parseHourSelect(hourSel.value) : null,
-        factor1: fac1Sel ? valueOrNull(fac1Sel.value) : null,
-      };
-      const est = estimateRisk(choice, analysisData);
-      renderEstimate(out, est, choice);
-    };
-
-    actionSel.addEventListener('change', onChange);
-    vehSel.addEventListener('change', onChange);
-    genSel.addEventListener('change', onChange);
-    if (borSel) borSel.addEventListener('change', onChange);
-    if (hourSel) hourSel.addEventListener('change', onChange);
-    if (fac1Sel) fac1Sel.addEventListener('change', onChange);
-
-    // Initial
-    onChange();
-  } catch (e) {
-    // ignore
-  }
-}
 
 function cleanCat(s) {
   if (s == null) return null;
@@ -441,251 +427,303 @@ function normalizeVehicleLabel(s) {
   return t;
 }
 
-function valueOrNull(v) {
-  return v && v !== '' ? v : null;
+
+// ----- Injury Risk Estimator (logistic regression) -----
+let estModel = null; // { D, w: Float64Array, b: number, baseRate: number }
+
+function sigmoid(z) { return 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z)))); }
+function hashStr(s, D) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h) + s.charCodeAt(i);
+  h = Math.abs(h);
+  return h % D;
+}
+function featureIndices(choice, D) {
+  const idx = new Set();
+  const add = (k, v) => {
+    if (v == null || v === '' || v === 'Unspecified') return;
+    const key = `${k}=${v}`;
+    idx.add(hashStr(key, D));
+  };
+  add('veh', choice.vehicleType || '');
+  add('act', choice.preCrash || '');
+  add('bor', choice.borough || '');
+  // Encode hour and day-of-week as categories
+  if (Number.isFinite(choice.hour)) add('hour', String(choice.hour));
+  if (Number.isFinite(choice.dow)) add('dow', String(choice.dow));
+  // Simple pairwise interactions to catch obvious combos
+  if (choice.preCrash && Number.isFinite(choice.hour)) add('actxhour', choice.preCrash + '×' + choice.hour);
+  if (choice.preCrash && Number.isFinite(choice.dow)) add('actxdow', choice.preCrash + '×' + choice.dow);
+  if (choice.vehicleType && choice.preCrash) add('vehxact', choice.vehicleType + '×' + choice.preCrash);
+  return Array.from(idx.values());
 }
 
-function distinctByFreq(arr) {
-  const counts = new Map();
-  for (const v of arr) {
-    if (v == null) continue;
-    counts.set(v, (counts.get(v) || 0) + 1);
-  }
-  return Array.from(counts.entries())
-    .sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0]))
-    .map(d => d[0])
-    .slice(0, 50); // cap options
-}
-
-function populateSelect(sel, values) {
-  if (!sel) return;
-  // keep first option (Any)
-  while (sel.options.length > 1) sel.remove(1);
-  values.forEach(v => {
-    const opt = document.createElement('option');
-    opt.value = v;
-    opt.textContent = v;
-    sel.appendChild(opt);
-  });
-}
-
-function populateHourSelect(sel, rows) {
-  if (!sel) return;
-  const hours = new Set();
-  (rows || []).forEach(r => { if (Number.isFinite(r.hour)) hours.add(r.hour); });
-  const list = Array.from(hours).sort((a,b)=>a-b);
-  while (sel.options.length > 1) sel.remove(1);
-  list.forEach(h => {
-    const opt = document.createElement('option');
-    opt.value = String(h);
-    opt.textContent = formatHour(h);
-    sel.appendChild(opt);
-  });
-}
-
-function parseHourSelect(v) {
-  if (v == null || v === '') return null;
-  const n = +v;
-  return Number.isFinite(n) ? n : null;
-}
-
-function estimateRisk(choice, rows) {
+function trainEstimator(rows, D = 1024) {
   const N = rows.length;
-  const injuredTotal = rows.reduce((a, r) => a + (r.injured ? 1 : 0), 0);
+  if (!N) return null;
+  const injuredTotal = d3.sum(rows, r => r.injured ? 1 : 0);
   const baseRate = injuredTotal / Math.max(1, N);
-
-  // Filter rows by chosen attributes (exact match on all selected fields)
-  const matches = rows.filter(r =>
-    (choice.preCrash ? cleanCat(r.preCrash) === choice.preCrash : true) &&
-    (choice.vehicleType ? cleanCat(r.vehicleType) === choice.vehicleType : true) &&
-    (choice.driverSex ? cleanCat(r.driverSex) === choice.driverSex : true) &&
-    (choice.borough ? cleanCat(r.borough) === choice.borough : true) &&
-    (Number.isFinite(choice.hour) ? (Number.isFinite(r.hour) && r.hour === choice.hour) : true) &&
-    (choice.factor1 ? cleanCat(r.factor1) === choice.factor1 : true)
-  );
-
-  const n = matches.length;
-  const inj = matches.reduce((a, r) => a + (r.injured ? 1 : 0), 0);
-
-  // Empirical Bayes shrinkage toward global mean for the exact-match group
-  const k = 50; // prior strength (pseudo-counts)
-  const prior = baseRate;
-  const exactRate = (inj + k * prior) / (n + k);
-
-  // Compute a backoff estimate from marginal EB odds ratios when exact n is small or zero
-  let backoffRate = baseRate;
-  let usedComponents = [];
-  if (marginalsCache) {
-    const baseOdds = baseRate / Math.max(1e-9, 1 - baseRate);
-    let orProduct = 1;
-    const caps = { min: 0.25, max: 4.0 }; // cap per-factor OR to avoid extremes
-
-    const apply = (key, val) => {
-      if (val == null) return;
-      const v = key === 'hour' ? val : cleanCat(val);
-      if (v == null) return;
-      const m = marginalsCache.maps[key];
-      if (!m) return;
-      const rec = m.get(v);
-      if (!rec) return;
-      const orCapped = Math.max(caps.min, Math.min(caps.max, rec.or));
-      orProduct *= orCapped;
-      usedComponents.push({ key, value: v, or: rec.or, n: rec.n });
-    };
-
-    apply('preCrash', choice.preCrash);
-    apply('vehicleType', choice.vehicleType);
-    apply('driverSex', choice.driverSex);
-    apply('borough', choice.borough);
-    if (Number.isFinite(choice.hour)) apply('hour', choice.hour);
-    apply('factor1', choice.factor1);
-
-    const combinedOdds = baseOdds * orProduct;
-    backoffRate = combinedOdds / (1 + combinedOdds);
+  const w = new Float64Array(D);
+  let b = Math.log((baseRate + 1e-6) / (1 - baseRate + 1e-6));
+  // SGD with L2
+  const lr0 = 0.2, lambda = 1e-3, epochs = 3;
+  // Build compact arrays of features for speed
+  const Xidx = rows.map(r => featureIndices(r, D));
+  const y = rows.map(r => r.injured ? 1 : 0);
+  for (let ep = 0; ep < epochs; ep++) {
+    for (let i = 0; i < N; i++) {
+      // dot
+      let z = b;
+      const idx = Xidx[i];
+      for (let k = 0; k < idx.length; k++) z += w[idx[k]];
+      const p = sigmoid(z);
+      const g = p - y[i]; // gradient for log loss
+      const lr = lr0 / (1 + ep); // simple decay
+      // update bias
+      b -= lr * g;
+      // update weights with L2
+      for (let k = 0; k < idx.length; k++) {
+        const j = idx[k];
+        w[j] = w[j] * (1 - lr * lambda) - lr * g;
+      }
+    }
   }
-
-  // Blend exact and backoff based on sample size
-  const minExact = 30;
-  let rate, method, nEff;
-  if (n >= minExact) {
-    rate = exactRate;
-    method = 'exact';
-    nEff = n;
-  } else if (n > 0 && isFinite(backoffRate)) {
-    const kBlend = 50; // how strongly to pull toward backoff when n is small
-    const w = n / (n + kBlend);
-    rate = w * exactRate + (1 - w) * backoffRate;
-    method = 'blend';
-    nEff = Math.round(n + (1 - w) * kBlend);
-  } else {
-    rate = isFinite(backoffRate) ? backoffRate : baseRate;
-    method = 'backoff';
-    nEff = usedComponents.reduce((s, c) => s + (c.n || 0), 0) || 0;
-  }
-
-  // Relative risk vs baseline (use baseline for comparison to keep definition consistent)
-  const rr = baseRate > 0 ? rate / baseRate : 1;
-
-  return { n, inj, rate, baseRate, rr, method, components: usedComponents, exactRate, backoffRate, nEff };
+  return { D, w, b, baseRate };
 }
 
-function renderSmartChart(containerId, est) {
-  const id = containerId.replace('#','');
-  const container = document.getElementById(id) || document.querySelector(containerId);
-  if (!container) return;
-  container.innerHTML = '';
-  const width = container.clientWidth || 320;
-  const height = container.clientHeight || 140;
-  const svg = d3.select(container).append('svg').attr('width', width).attr('height', height);
-  const margin = { top: 20, right: 24, bottom: 28, left: 120 };
-  const innerW = Math.max(160, width - margin.left - margin.right);
-  const innerH = Math.max(60, height - margin.top - margin.bottom);
-  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
-
-  if (!est || !isFinite(est.rate) || !isFinite(est.baseRate)) {
-    g.append('text').attr('x', innerW/2).attr('y', innerH/2).attr('text-anchor','middle').attr('fill','var(--muted)').text('No estimate yet');
-    return;
-  }
-
-  const data = [
-    { label: 'Baseline', value: Math.max(0, est.baseRate), color: '#94a3b8' },
-    { label: 'Your estimate', value: Math.max(0, est.rate), color: est.rr >= 1 ? '#e11d48' : '#059669', rr: est.rr }
-  ];
-
-  const maxVal = Math.max(0.001, d3.max(data, d => d.value) || 0.001);
-  const x = d3.scaleLinear().domain([0, maxVal * 1.1]).range([0, innerW]);
-  const y = d3.scaleBand().domain(data.map(d => d.label)).range([0, innerH]).padding(0.35);
-  const fmtPct = d3.format('.1%');
-  const fmt2 = d3.format('.2f');
-
-  g.append('g').selectAll('rect').data(data).join('rect')
-    .attr('x', 0)
-    .attr('y', d => y(d.label))
-    .attr('width', d => x(d.value))
-    .attr('height', y.bandwidth())
-    .attr('fill', d => d.color)
-    .attr('rx', 3).attr('ry', 3)
-    .attr('opacity', 0.9);
-
-  // Labels on left
-  g.append('g').selectAll('text.lbl').data(data).join('text')
-    .attr('class','lbl')
-    .attr('x', -8)
-    .attr('y', d => y(d.label) + y.bandwidth()/2)
-    .attr('dy', '0.32em')
-    .attr('text-anchor','end')
-    .attr('fill', '#ffffff')
-    .text(d => d.label);
-
-  // Values on bars
-  g.append('g').selectAll('text.val').data(data).join('text')
-    .attr('class','val')
-    .attr('x', d => x(d.value) + 6)
-    .attr('y', d => y(d.label) + y.bandwidth()/2)
-    .attr('dy', '0.32em')
-    .attr('fill', '#ffffff')
-    .text(d => fmtPct(d.value));
-
-  // RR annotation
-  const rrText = `Relative risk: ${fmt2(est.rr)}× (vs baseline)`;
-  svg.append('text')
-    .attr('x', margin.left + innerW / 2)
-    .attr('y', margin.top + innerH + 22)
-    .attr('text-anchor','middle')
-    .attr('fill', est.rr >= 1 ? '#b91c1c' : '#065f46')
-    .text(rrText);
+function predictEstimator(model, choice) {
+  if (!model) return null;
+  const idx = featureIndices(choice, model.D);
+  let z = model.b;
+  for (let k = 0; k < idx.length; k++) z += model.w[idx[k]];
+  const p = sigmoid(z);
+  // Clamp to [0,1]
+  return Math.max(0, Math.min(1, p));
 }
 
-function getCurrentChoice() {
-  const actionSel = document.getElementById('sf-action');
-  const vehSel = document.getElementById('sf-vehicle');
-  const genSel = document.getElementById('sf-gender');
-  const borSel = document.getElementById('sf-borough');
-  const hourSel = document.getElementById('sf-hour');
-  const fac1Sel = document.getElementById('sf-factor1');
+function populateEstimatorOptions(rows) {
+  const byCount = (arr, key) => {
+    const m = new Map();
+    arr.forEach(r => {
+      const v = (r[key] || '').trim();
+      if (!v || v === 'Unspecified' || v === 'NA' || v === 'Unknown') return;
+      m.set(v, (m.get(v) || 0) + 1);
+    });
+    return Array.from(m.entries()).sort((a,b)=> b[1]-a[1]).map(d=>d[0]);
+  };
+  const topVeh = byCount(rows, 'vehicleType').slice(0, 25);
+  const topAct = byCount(rows, 'preCrash').slice(0, 25);
+  const topBor = byCount(rows, 'borough').slice(0, 10);
+
+  function fillSelect(id, values, formatter = d=>d, includeEmpty=true) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '';
+    if (includeEmpty) {
+      const opt = document.createElement('option'); opt.value=''; opt.textContent='—'; el.appendChild(opt);
+    }
+    values.forEach(v => { const opt = document.createElement('option'); opt.value = v; opt.textContent = formatter(v); el.appendChild(opt); });
+  }
+  fillSelect('est-vehicle', topVeh);
+  fillSelect('est-action', topAct);
+  fillSelect('est-borough', topBor);
+  // Hours 0..23
+  const hours = d3.range(0,24);
+  fillSelect('est-hour', hours, h => String(h).padStart(2,'0')+':00', true);
+  // Day of week Mon..Sun (1..6,0)
+  const order = [1,2,3,4,5,6,0];
+  const labels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  fillSelect('est-dow', order, d => labels[d], true);
+}
+
+function readEstimatorChoice() {
+  const getSel = id => {
+    const el = document.getElementById(id); if (!el) return '';
+    const v = el.value; return v == null ? '' : v;
+  };
+  const hourSel = document.getElementById('est-hour');
+  const dowSel = document.getElementById('est-dow');
+  const hour = hourSel && hourSel.value !== '' ? parseInt(hourSel.value, 10) : NaN;
+  // read numeric day-of-week directly from select value
+  const dow = dowSel && dowSel.value !== '' ? parseInt(dowSel.value, 10) : NaN;
   return {
-    preCrash: actionSel ? valueOrNull(actionSel.value) : null,
-    vehicleType: vehSel ? valueOrNull(vehSel.value) : null,
-    driverSex: genSel ? valueOrNull(genSel.value) : null,
-    borough: borSel ? valueOrNull(borSel.value) : null,
-    hour: hourSel ? parseHourSelect(hourSel.value) : null,
-    factor1: fac1Sel ? valueOrNull(fac1Sel.value) : null,
+    vehicleType: getSel('est-vehicle') || null,
+    preCrash: getSel('est-action') || null,
+    borough: getSel('est-borough') || null,
+    hour: Number.isFinite(hour) ? hour : null,
+    dow: Number.isFinite(dow) ? dow : null,
   };
 }
 
-function renderEstimate(out, est, choice) {
-  if (!out || !est) return;
+function renderEstimatorPrediction() {
+  const out = document.getElementById('estimator-output');
+  if (!out) return;
+  if (!estModel) { out.textContent = 'Loading estimator…'; return; }
+  const choice = readEstimatorChoice();
+  const p = predictEstimator(estModel, choice);
+  if (p == null) { out.textContent = '—'; return; }
   const fmtPct = d3.format('.1%');
-  const parts = [];
-  const picks = [
-    choice.preCrash && `action: ${choice.preCrash}`,
-    choice.vehicleType && `vehicle: ${choice.vehicleType}`,
-    choice.driverSex && `gender: ${choice.driverSex}`,
-    choice.borough && `borough: ${choice.borough}`,
-    (Number.isFinite(choice.hour)) && `hour: ${formatHour(choice.hour)}`,
-    choice.factor1 && `factor: ${choice.factor1}`
-  ].filter(Boolean);
-  const pickStr = picks.length ? picks.join(', ') : 'any action, any vehicle, any gender, any borough, any hour, any factor';
+  const rr = estModel.baseRate > 0 ? (p / estModel.baseRate) : 1;
+  const dir = rr >= 1 ? 'higher' : 'lower';
+  out.textContent = `${fmtPct(p)} chance that a crash involved injuries (about ${Math.abs((rr-1)*100).toFixed(0)}% ${dir} than average in this dataset).`;
+}
 
-  // Method note
-  let methodNote = '';
-  if (est.method === 'exact') methodNote = 'exact-match estimate';
-  else if (est.method === 'blend') methodNote = 'blend of exact-match and backoff estimate';
-  else if (est.method === 'backoff') methodNote = 'backoff estimate from marginal patterns';
+function initEstimator(rows) {
+  try {
+    estModel = trainEstimator(rows);
+    populateEstimatorOptions(rows);
+    // Hook up change handlers
+    ['est-vehicle','est-action','est-borough','est-hour','est-dow'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.addEventListener('change', renderEstimatorPrediction);
+    });
+    renderEstimatorPrediction();
+  } catch (e) { console.error('Estimator init failed', e); }
+}
 
-  parts.push(`For ${pickStr}, the estimated injury likelihood is ${fmtPct(est.rate)} (${methodNote}).`);
-  parts.push(`Baseline across the dataset is ${fmtPct(est.baseRate)}; your relative risk is ${est.rr.toFixed(2)}× baseline.`);
-  if (est.method !== 'exact') {
-    const nDisp = (est.n || 0).toLocaleString();
-    const nEff = (est.nEff || 0).toLocaleString();
-    parts.push(`Matched records: ${nDisp}. Effective sample used: ${nEff}. Estimates are stabilized with empirical‑Bayes shrinkage.`);
+// ----- Best vs Worst risk decision chains -----
+function buildDomains(rows) {
+  const byCount = (arr, key) => {
+    const m = new Map();
+    arr.forEach(r => {
+      const v = (r[key] || '').trim();
+      if (!v || v === 'Unspecified' || v === 'NA' || v === 'Unknown') return;
+      m.set(v, (m.get(v) || 0) + 1);
+    });
+    return Array.from(m.entries()).sort((a,b)=> b[1]-a[1]).map(d=>d[0]);
+  };
+  const veh = byCount(rows, 'vehicleType').slice(0, 12);
+  const act = byCount(rows, 'preCrash').slice(0, 12);
+  const bor = byCount(rows, 'borough').slice(0, 6);
+  const hour = d3.range(0,24);
+  const dowOrder = [1,2,3,4,5,6,0];
+  return { vehicleType: veh, preCrash: act, borough: bor, hour, dow: dowOrder };
+}
+
+function supportCount(rows, sel) {
+  let n = 0;
+  for (const r of rows) {
+    if (sel.vehicleType && r.vehicleType !== sel.vehicleType) continue;
+    if (sel.preCrash && r.preCrash !== sel.preCrash) continue;
+    if (sel.borough && r.borough !== sel.borough) continue;
+    if (Number.isFinite(sel.hour) && r.hour !== sel.hour) continue;
+    if (Number.isFinite(sel.dow) && r.dow !== sel.dow) continue;
+    n++;
   }
-  out.classList.remove('alert-danger','alert-success','alert-info');
-  out.classList.add('alert-info');
-  out.textContent = parts.join(' ');
+  return n;
+}
 
-  // Render comparison chart
-  renderSmartChart('smart-chart', est);
+function greedyChain(rows, model, domains, direction = 'worst', opts = {}) {
+  const maxDepth = opts.maxDepth ?? 5;
+  const minSupport = opts.minSupport ?? 80;
+  const minDelta = opts.minDelta ?? 0.001; // 0.1pp
+  const fields = ['vehicleType','preCrash','borough','hour','dow'];
+  const nice = {
+    vehicleType: 'Vehicle',
+    preCrash: 'Action',
+    borough: 'Borough',
+    hour: 'Hour',
+    dow: 'Day'
+  };
+  const dowLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const fmtHour = h => `${String(h).padStart(2,'0')}:00`;
+  const fmtVal = (k, v) => {
+    if (k === 'hour') return fmtHour(v);
+    if (k === 'dow') return dowLabels[v] || String(v);
+    return String(v);
+  };
+
+  const steps = [];
+  const sel = { vehicleType:null, preCrash:null, borough:null, hour:null, dow:null };
+  let pCurr = predictEstimator(model, sel) ?? (model?.baseRate ?? 0);
+  steps.push({ label: 'Start', field: null, value: null, p: pCurr, n: rows.length });
+
+  for (let d = 0; d < maxDepth; d++) {
+    let best = null; // {field, value, p, n, delta}
+    for (const f of fields) {
+      if (sel[f] != null) continue; // already chosen
+      const candidates = domains[f] || [];
+      for (const v of candidates) {
+        const trial = { ...sel, [f]: v };
+        const n = supportCount(rows, trial);
+        if (n < minSupport) continue;
+        const p = predictEstimator(model, trial);
+        if (p == null) continue;
+        const delta = p - pCurr;
+        const score = (direction === 'worst') ? delta : -delta;
+        if (best == null || score > best.score) {
+          best = { field: f, value: v, p, n, delta, score };
+        }
+      }
+    }
+    if (!best) break;
+    const improve = (direction === 'worst') ? (best.delta >= minDelta) : ((-best.delta) >= minDelta);
+    if (!improve) break;
+    sel[best.field] = best.value;
+    pCurr = best.p;
+    steps.push({ label: `${nice[best.field]} = ${fmtVal(best.field, best.value)}`, field: best.field, value: best.value, p: best.p, n: best.n, delta: best.delta });
+  }
+
+  return steps;
+}
+
+function renderRiskChains(containerId, rows, model) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = '';
+  const width = el.clientWidth || 320;
+  const height = el.clientHeight || 260;
+  const svg = d3.select(el).append('svg').attr('width', width).attr('height', height);
+  const margin = { top: 24, right: 24, bottom: 24, left: 24 };
+  const innerW = Math.max(200, width - margin.left - margin.right);
+  const innerH = Math.max(160, height - margin.top - margin.bottom);
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  if (!rows || !rows.length || !model) {
+    g.append('text').attr('x', innerW/2).attr('y', innerH/2).attr('text-anchor','middle').attr('fill','var(--muted)').text('Not enough data to build chains');
+    return;
+  }
+
+  const domains = buildDomains(rows);
+  const worst = greedyChain(rows, model, domains, 'worst', { maxDepth: 5, minSupport: 30, minDelta: 0 });
+  const best = greedyChain(rows, model, domains, 'best', { maxDepth: 5, minSupport: 30, minDelta: 0 });
+
+  // Layout: two rows (best on top, worst on bottom)
+  const rowsY = [innerH*0.3, innerH*0.75];
+  const lanes = [
+    { title: 'Best (lower risk)', steps: best, y: rowsY[0], color: '#10b981' },
+    { title: 'Worst (higher risk)', steps: worst, y: rowsY[1], color: '#ef4444' }
+  ];
+
+  const fmtPct = d3.format('.1%');
+
+  lanes.forEach((lane, iLane) => {
+    // Title
+    g.append('text').attr('x', 0).attr('y', lane.y - 24).attr('fill', 'var(--accent)').text(lane.title);
+    const nSteps = lane.steps.length;
+    const xScale = d3.scalePoint().domain(d3.range(nSteps)).range([0, innerW]).padding(0.5);
+
+    // Links
+    for (let i = 0; i < nSteps - 1; i++) {
+      const x1 = xScale(i), x2 = xScale(i+1);
+      g.append('line').attr('x1', x1).attr('y1', lane.y).attr('x2', x2).attr('y2', lane.y)
+        .attr('stroke', '#94a3b8').attr('stroke-dasharray', '4,4');
+      // arrowhead
+      g.append('path')
+        .attr('d', `M${x2-6},${lane.y-4} L${x2},${lane.y} L${x2-6},${lane.y+4}`)
+        .attr('fill', 'none').attr('stroke', '#94a3b8');
+    }
+
+    // Nodes
+    const nodeG = g.selectAll(`g.node-${iLane}`).data(lane.steps).join('g').attr('transform', (d, i)=>`translate(${xScale(i)},${lane.y})`);
+    nodeG.append('circle').attr('r', 18).attr('fill', lane.color).attr('opacity', 0.9).attr('stroke', '#334155');
+    // Labels: top line condition, bottom line p and n
+    nodeG.append('text').attr('y', -28).attr('text-anchor','middle').attr('fill','#e5edff').attr('font-size', 11)
+      .text(d => d.label);
+    nodeG.append('text').attr('y', 4).attr('text-anchor','middle').attr('fill','#0b1020').attr('font-size', 11)
+      .text(d => fmtPct(d.p));
+    nodeG.append('text').attr('y', 22).attr('text-anchor','middle').attr('fill','var(--muted)').attr('font-size', 10)
+      .text(d => `n=${(d.n||0).toLocaleString()}`);
+  });
 }
 
 // Kick off

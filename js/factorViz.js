@@ -2,7 +2,8 @@
 // Exports: renderFactorChart(containerId, results)
 // results: array from analyzeFactors, each with { factor, value, n, injured, rate, otherN, otherInjured, otherRate, rr, chi2, baseRate }
 
-export function renderFactorChart(containerId, results) {
+export function renderFactorChart(containerId, results, opts = {}) {
+  const injuryMode = !!opts.injuryMode;
   const container = document.getElementById(containerId.replace('#','')) || document.querySelector(containerId);
   if (!container) throw new Error(`Container ${containerId} not found`);
 
@@ -61,12 +62,16 @@ export function renderFactorChart(containerId, results) {
     };
   });
 
-  // Keep only top 12 factors by chi-square
-  items = items.sort((a, b) => d3.descending(a.chi2, b.chi2)).slice(0, 12);
+  // Keep only top 12 by either chi2 (default) or injury rate (injury mode)
+  if (injuryMode) {
+    items = items.sort((a, b) => d3.descending(a.rate, b.rate)).slice(0, 12);
+  } else {
+    items = items.sort((a, b) => d3.descending(a.chi2, b.chi2)).slice(0, 12);
+  }
 
   // Scales
   const x = d3.scaleLinear()
-    .domain([0, d3.max(items, d => d.chi2) || 1])
+    .domain([0, d3.max(items, d => injuryMode ? d.rate : d.chi2) || 1])
     .nice()
     .range([0, innerW]);
 
@@ -85,14 +90,14 @@ export function renderFactorChart(containerId, results) {
     .attr('class', 'bar')
     .attr('x', 0)
     .attr('y', d => y(d.label))
-    .attr('width', d => x(d.chi2))
+    .attr('width', d => x(injuryMode ? d.rate : d.chi2))
     .attr('height', y.bandwidth())
     .attr('fill', d => color(d))
     .attr('stroke', '#334155')
     .style('cursor', 'pointer');
 
   // Axes
-  const xAxis = d3.axisBottom(x).ticks(5).tickSizeOuter(0);
+  const xAxis = (injuryMode ? d3.axisBottom(x).ticks(5).tickFormat(d3.format('.0%')) : d3.axisBottom(x).ticks(5)).tickSizeOuter(0);
   const yAxis = d3.axisLeft(y).tickSizeOuter(0);
 
   g.append('g')
@@ -110,7 +115,7 @@ export function renderFactorChart(containerId, results) {
     .attr('y', margin.top + innerH + 32)
     .attr('fill', 'var(--muted)')
     .attr('text-anchor', 'middle')
-    .text('Chi-square score (higher = more explanatory)');
+    .text(injuryMode ? 'Injury rate (share of crashes with injuries)' : 'Chi-square score (higher = more explanatory)');
 
   // Tooltip
   const tooltip = d3.select('#tooltip');

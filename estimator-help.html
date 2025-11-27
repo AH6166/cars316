@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>How the Injury Risk Estimator Works</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
+  <!-- Site styles -->
+  <link rel="stylesheet" href="css/styles.css" />
+  <style>
+    /* Minor tweaks for a readable help page */
+    main { max-width: 900px; }
+    .help-card { background: var(--card); border: 3px solid var(--grid); border-radius: 16px; }
+    .help-card h3 { color: var(--accent); font-family: 'Bangers', cursive; letter-spacing: .5px; }
+    .muted { color: var(--muted); }
+    .kbd { border: 1px solid rgba(255,255,255,.3); border-bottom-width: 2px; padding: 0 .4rem; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: rgba(255,255,255,.06); }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header class="hero py-4 mb-3 text-center">
+    <div class="container">
+      <h1 class="display-5 hero-title">Injury Risk Estimator</h1>
+      <p class="lead" style="color:#eafffb">What it does, what it uses, and how to read the numbers.</p>
+      <p class="small muted mb-0">This help page explains the model used on this site only. It does not give legal or medical advice.</p>
+    </div>
+  </header>
+
+  <main class="container mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <a href="index.html#estimator-form" class="btn btn-sm btn-outline-light" aria-label="Back to the estimator">← Back to estimator</a>
+      <span class="small muted">Data source: NYC Open Data – Motor Vehicle Collisions (this repository)</span>
+    </div>
+
+    <section class="help-card p-3 p-md-4 mb-4">
+      <h2 class="section-title mb-2">What the estimator predicts</h2>
+      <p class="mb-2">The tool predicts the probability that a crash in this dataset involved injuries, given a simple scenario you select.</p>
+      <ul>
+        <li>Output: a probability between 0% and 100% for “injury involved”.</li>
+        <li>Comparison: we also show how this estimate compares to the overall average in the same dataset.</li>
+        <li>Scope: it reflects patterns in the file you are viewing, not the entire city or future conditions.</li>
+      </ul>
+    </section>
+
+    <section class="help-card p-3 p-md-4 mb-4">
+      <h2 class="section-title mb-2">What inputs it uses</h2>
+      <p class="mb-2">The estimator uses five common fields available in the data:</p>
+      <ul>
+        <li>Vehicle type</li>
+        <li>Pre‑crash action (for example, going straight, turning, changing lanes)</li>
+        <li>Borough</li>
+        <li>Hour of day</li>
+        <li>Day of week</li>
+      </ul>
+      <p class="mb-0">You can leave any input blank. Blank means “no specific value” for that field.</p>
+    </section>
+
+    <section class="help-card p-3 p-md-4 mb-4">
+      <h2 class="section-title mb-2">How the model works</h2>
+      <h3 class="h5 mt-2">Model type</h3>
+      <p>We use logistic regression with L2 regularization. This is a standard method for estimating the probability of a yes/no outcome (here: injury vs no injury) while keeping the model from over‑reacting to noise.</p>
+      <h3 class="h5 mt-3">Features</h3>
+      <ul>
+        <li>Each selected category (like “SUV” or “Making left turn”) becomes a feature.</li>
+        <li>We add a few simple interaction features to capture obvious combinations (for example, action×hour, action×day, vehicle×action).</li>
+        <li>Internally we use a “feature hashing” trick to keep the model small and fast in the browser.</li>
+      </ul>
+      <h3 class="h5 mt-3">Training data</h3>
+      <ul>
+        <li>The model trains in your browser when the page loads, using the rows in this CSV.</li>
+        <li>Target variable: whether the crash involved injuries (based on injury counts or recorded severity).</li>
+      </ul>
+      <h3 class="h5 mt-3">Guardrails against over/underfitting</h3>
+      <ul>
+        <li>L2 regularization shrinks coefficients toward zero when evidence is weak.</li>
+        <li>Hashing and simple interactions keep complexity in check.</li>
+        <li>We also clamp extreme probabilities so outputs remain between 0 and 100%.</li>
+      </ul>
+    </section>
+
+    <section class="help-card p-3 p-md-4 mb-4">
+      <h2 class="section-title mb-2">Interpreting the estimate</h2>
+      <ul>
+        <li>The percentage is an estimate for this dataset, not a guarantee about any specific situation.</li>
+        <li>When you add more specific conditions, the estimate can move up or down depending on patterns the model learned.</li>
+        <li>Rare combinations may still be uncertain. If you choose very uncommon values, treat the number with extra caution.</li>
+      </ul>
+    </section>
+
+    <section class="help-card p-3 p-md-4 mb-4">
+      <h2 class="section-title mb-2">Limitations and good practice</h2>
+      <ul>
+        <li>Data quality limits model quality. Missing or ambiguous categories reduce reliability.</li>
+        <li>The model does not include weather, road design, or many other context factors that also affect risk.</li>
+        <li>Estimates describe correlation in this file, not causation.</li>
+      </ul>
+    </section>
+
+    <section class="help-card p-3 p-md-4 mb-4">
+      <h2 class="section-title mb-2">Accessibility and privacy</h2>
+      <ul>
+        <li>All computations run locally in your browser. No inputs are sent to a server.</li>
+        <li>Controls and outputs are labeled for screen readers, and text uses high‑contrast colors.</li>
+      </ul>
+    </section>
+
+    <section class="help-card p-3 p-md-4">
+      <h2 class="section-title mb-2">Questions</h2>
+      <p>Have suggestions to improve clarity or method? Open an issue or leave a note next to the project.</p>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+</body>
+</html>

@@ -10,7 +10,14 @@ export async function loadCollisions(csvPath) {
       const m = /^(\d{1,2}):(\d{1,2})/.exec(d.CRASH_TIME.trim());
       if (m) hour = +m[1];
     }
-    return (date && hour != null && hour >= 0 && hour <= 23) ? { date, hour } : null;
+    // injury indicators
+    const numInj = parseFloat(d['NUMBER OF PERSONS INJURED']);
+    const sev = parseFloat(d['Severity']);
+    const injured = (isFinite(numInj) && numInj > 0) || (isFinite(sev) && sev > 0);
+    const injuredCount = isFinite(numInj) ? Math.max(0, numInj) : 0;
+    return (date && hour != null && hour >= 0 && hour <= 23)
+      ? { date, hour, injured, injuredCount, severity: isFinite(sev) ? sev : 0 }
+      : null;
   });
   return raw.filter(Boolean);
 }
@@ -35,7 +42,13 @@ export async function loadLocations(csvPath) {
       if (tm) hour = +tm[1];
     }
 
-    return { lat, lon, hour };
+    // injury indicators
+    const numInj = parseFloat(d['NUMBER OF PERSONS INJURED']);
+    const sev = parseFloat(d['Severity']);
+    const injured = (isFinite(numInj) && numInj > 0) || (isFinite(sev) && sev > 0);
+    const injuredCount = isFinite(numInj) ? Math.max(0, numInj) : 0;
+
+    return { lat, lon, hour, injured, injuredCount, severity: isFinite(sev) ? sev : 0 };
   });
   return raw.filter(Boolean);
 }
