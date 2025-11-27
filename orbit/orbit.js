@@ -1,269 +1,310 @@
-// -------------------------------------------------------------
-// ORBIT VISUALIZATION (Sun + Planets)
-// Morandi colors, natural drifting, STRAIGHT glowing lines,
-// Planet sizes scale with accident counts,
-// Smooth drag (no snapping)
-// -------------------------------------------------------------
+// --------------------------------------------------------------------
+// ORBIT VISUALIZATION (FULL FINAL VERSION — Full Factor Names)
+// Sun + Boroughs + Contributing Factor Moons
+// Centered labels, full factor names wrapped naturally, “cases” included
+// --------------------------------------------------------------------
 
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 
 const width = window.innerWidth;
 const height = window.innerHeight;
 
-// -------------------------------------------------------------
-// BACKGROUND
-// -------------------------------------------------------------
 d3.select("body").style("background", "#f5f5f5");
 
-const svg = d3.select("#chart")
-    .append("svg")
+const svg = d3.select("#chart").append("svg")
     .attr("width", width)
-    .attr("height", height)
-    .style("background", "#f5f5f5");
+    .attr("height", height);
 
 const tooltip = d3.select("#tooltip");
 
-// -------------------------------------------------------------
-// GLOW FILTER FOR LINES
-// -------------------------------------------------------------
+// Glow Filter
 const defs = svg.append("defs");
-
-const glow = defs.append("filter")
-    .attr("id", "soft-glow");
-
-glow.append("feGaussianBlur")
-    .attr("stdDeviation", "6")
-    .attr("result", "coloredBlur");
-
+const glow = defs.append("filter").attr("id", "soft-glow");
+glow.append("feGaussianBlur").attr("stdDeviation", 6).attr("result", "blur");
 const feMerge = glow.append("feMerge");
-feMerge.append("feMergeNode").attr("in", "coloredBlur");
+feMerge.append("feMergeNode").attr("in", "blur");
 feMerge.append("feMergeNode").attr("in", "SourceGraphic");
 
-// -------------------------------------------------------------
-// MORANDI COLORS
-// -------------------------------------------------------------
-const morandiPalette = [
-    "#D8CFC4", "#C3B9A6", "#B7AFA3", "#A6A5A1",
-    "#D0C8C1", "#CABEB4", "#B5B2AD", "#9F9E9A"
-];
-
-const sunColor = "#EBDFAF";
-
-// -------------------------------------------------------------
-// CONFIG
-// -------------------------------------------------------------
 const boroughs = ["BROOKLYN", "QUEENS", "MANHATTAN", "BRONX", "STATEN ISLAND"];
 const center = { x: width / 2, y: height / 2 };
-const orbitRadius = 380;
 
-// natural drift
-function smoothNoise(t, offset) {
-    return (
-        Math.sin(t * 0.0004 + offset) * 0.7 +
-        Math.sin(t * 0.0006 + offset * 1.7) * 0.5 +
-        Math.sin(t * 0.0003 + offset * 2.3) * 0.3
-    );
+// Slightly closer to sun to avoid clipping
+const orbitRadius = 330;
+
+// Subtle movement noise
+function smoothNoise(t, o) {
+    return Math.sin(t * 0.0004 + o) * 0.6 +
+        Math.sin(t * 0.0007 + o * 1.7) * 0.3;
 }
 
-// -------------------------------------------------------------
-// LOAD DATA
-// -------------------------------------------------------------
+// --------------------------------------------------------------------
 d3.csv("../data/original/collisions_severity.csv").then(data => {
 
-    // normalize
-    data.forEach(d => {
-        if (d.BOROUGH) d.BOROUGH = d.BOROUGH.trim().toUpperCase();
-    });
-
+    data.forEach(d => d.BOROUGH = d.BOROUGH?.trim().toUpperCase());
     const filtered = data.filter(d => boroughs.includes(d.BOROUGH));
 
-    // COUNT ACCIDENTS
     const boroughCounts = {};
     boroughs.forEach(b => boroughCounts[b] = 0);
+    filtered.forEach(d => boroughCounts[d.BOROUGH]++);
 
-    filtered.forEach(d => {
-        boroughCounts[d.BOROUGH]++;
-    });
-
-    const countsArray = Object.values(boroughCounts);
-    const minCount = Math.min(...countsArray);
-    const maxCount = Math.max(...countsArray);
+    const nycTotal = d3.sum(Object.values(boroughCounts));
 
     const radiusScale = d3.scaleLinear()
-        .domain([minCount, maxCount])
-        .range([55, 115]); // always < sun
+        .domain(d3.extent(Object.values(boroughCounts)))
+        .range([55, 115]);
 
-    // -------------------------------------------------------------
-    // BUILD NODES
-    // -------------------------------------------------------------
     const nodes = [];
 
     // SUN
     nodes.push({
         id: "NEW YORK",
         type: "sun",
+        count: nycTotal,
         r: 140,
-        fx: center.x,
-        fy: center.y,
-        color: sunColor
+        x: center.x,
+        y: center.y,
+        color: "#EBDFAF"
     });
 
-    // PLANETS
+    // BOROUGHS
     boroughs.forEach((b, i) => {
-        const angle = (i / boroughs.length) * Math.PI * 2;
+        const ang = (i / boroughs.length) * Math.PI * 2;
         nodes.push({
             id: b,
             type: "borough",
-            baseAngle: angle,
+            count: boroughCounts[b],
+            baseAngle: ang,
             r: radiusScale(boroughCounts[b]),
-            color: morandiPalette[i],
-            noiseOffset: Math.random() * 10000
+            noiseOffset: Math.random() * 20000,
+            color: "#C3B9A6",
+            x: center.x + orbitRadius * Math.cos(ang),
+            y: center.y + orbitRadius * Math.sin(ang)
         });
     });
 
-    // -------------------------------------------------------------
-    // LINKS (SUN → PLANETS)
-    // -------------------------------------------------------------
-    const links = nodes
-        .filter(n => n.type === "borough")
-        .map(n => ({
-            source: nodes[0],
-            target: n
-        }));
+    // CONTRIBUTING FACTORS
+    const factorCounts = {};
+    boroughs.forEach(b => factorCounts[b] = {});
 
-    const simulation = d3.forceSimulation(nodes)
-        .force("center", d3.forceCenter(center.x, center.y))
-        .force("collide", d3.forceCollide(d => d.r + 18))
-        .force("link", d3.forceLink(links).strength(0.05))
-        .alpha(0.25)
-        .on("tick", ticked);
+    filtered.forEach(d => {
+        const f = d.CONTRIBUTING_FACTOR_1?.trim();
+        if (f && f !== "Unspecified") {
+            factorCounts[d.BOROUGH][f] = (factorCounts[d.BOROUGH][f] || 0) + 1;
+        }
+    });
 
-    // -------------------------------------------------------------
-    // STRAIGHT GLOWING LINES
-    // -------------------------------------------------------------
+    // MOONS — full factor names
+    const moonNodes = [];
+    boroughs.forEach(b => {
+        const parent = nodes.find(n => n.id === b);
+
+        const top3 = Object.entries(factorCounts[b])
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3);
+
+        const dist = parent.r + 50;
+
+        top3.forEach(([factor, count], i) => {
+            const angle = (i / top3.length) * Math.PI * 2;
+            moonNodes.push({
+                id: factor,
+                count,
+                type: "moon",
+                borough: b,
+                r: Math.max(7, Math.min(20, count / 30)),
+                angle,
+                offsetX: Math.cos(angle) * dist,
+                offsetY: Math.sin(angle) * dist,
+                x: parent.x,
+                y: parent.y,
+                noiseOffset: Math.random() * 20000,
+                color: "#a5a5a5"
+            });
+        });
+    });
+
+    const planetLinks = nodes.filter(n => n.type === "borough")
+        .map(n => ({ source: nodes[0], target: n }));
+
     const linkLines = svg.append("g")
-        .selectAll("line")
-        .data(links)
-        .enter()
-        .append("line")
+        .selectAll("line.sunLink")
+        .data(planetLinks)
+        .enter().append("line")
         .attr("stroke", "#bfbab2")
         .attr("stroke-width", 2)
-        .attr("opacity", 0.8)
+        .attr("opacity", 0.7)
         .attr("filter", "url(#soft-glow)");
 
-    // -------------------------------------------------------------
-    // DRAW SUN + PLANETS
-    // -------------------------------------------------------------
-    const circles = svg.append("g")
-        .selectAll("circle")
+    const moonLinks = svg.append("g")
+        .selectAll("line.moonLink")
+        .data(moonNodes)
+        .enter().append("line")
+        .attr("stroke", "#c8c8c8")
+        .attr("stroke-width", 1.3)
+        .attr("opacity", 0.75);
+
+    // PLANETS
+    const planetCircles = svg.append("g")
+        .selectAll("circle.planet")
         .data(nodes)
-        .enter()
-        .append("circle")
+        .enter().append("circle")
+        .attr("class", "planet")
         .attr("r", d => d.r)
         .attr("fill", d => d.color)
         .attr("stroke", "#eee8e0")
         .attr("stroke-width", 3)
-        .on("mouseover", (e, d) => tooltip.style("opacity", 1).html(d.id))
-        .on("mousemove", e =>
-            tooltip.style("left", (e.pageX + 12) + "px")
-                .style("top", (e.pageY + 12) + "px")
-        )
-        .on("mouseout", () => tooltip.style("opacity", 0))
         .call(
             d3.drag()
-                .on("start", dragStart)
-                .on("drag", dragMove)
-                .on("end", dragEnd)
+                .on("start", (e, d) => d.dragging = (d.type === "borough"))
+                .on("drag", (e, d) => { if (d.dragging) { d.x = e.x; d.y = e.y; } })
+                .on("end", (e, d) => d.dragging = false)
         );
 
-    // -------------------------------------------------------------
-    // LABELS
-    // -------------------------------------------------------------
-    const labels = svg.append("g")
-        .selectAll("text")
-        .data(nodes)
-        .enter()
-        .append("text")
-        .attr("text-anchor", "middle")
-        .attr("dy", ".35em")
-        .style("pointer-events", "none")
-        .style("fill", "#5c5c5c")
-        .style("font-weight", "600")
-        .style("font-size", d => d.type === "sun" ? "32px" : "20px")
-        .text(d => d.type === "sun" ? "New York" : d.id);
+    // MOONS
+    const moonCircles = svg.append("g")
+        .selectAll("circle.moon")
+        .data(moonNodes)
+        .enter().append("circle")
+        .attr("class", "moon")
+        .attr("r", d => d.r)
+        .attr("fill", d => d.color)
+        .attr("stroke", "#b9b9b9")
+        .attr("stroke-width", 1)
+        .style("opacity", 0.93)
+        .call(
+            d3.drag()
+                .on("start", (e, d) => d.dragging = true)
+                .on("drag", (e, d) => { d.x = e.x; d.y = e.y; })
+                .on("end", (e, d) => d.dragging = false)
+        );
 
-    // -------------------------------------------------------------
-    // NATURAL DRIFT + SMOOTH DRAG FIX
-    // -------------------------------------------------------------
-    function animateNatural() {
+    // LABELS — SUN + BOROUGHS
+    const labels = svg.append("g")
+        .selectAll("text.nodeLabel")
+        .data(nodes)
+        .enter().append("text")
+        .attr("text-anchor", "middle")
+        .style("fill", "#3c3c3c")
+        .style("pointer-events", "none")
+        .each(function (d) {
+            const t = d3.select(this);
+            t.append("tspan")
+                .text(d.type === "sun" ? "New York" : d.id)
+                .attr("dy", "-4px")
+                .style("font-size", d.type === "sun" ? "34px" : "22px")
+                .style("font-weight", "700");
+            t.append("tspan")
+                .text(d.count.toLocaleString() + " cases")
+                .attr("x", 0)
+                .attr("dy", "22px")
+                .style("font-size", "17px")
+                .style("font-weight", "500");
+        });
+
+    // LABELS — MOONS (full wrapped)
+    const moonLabels = svg.append("g")
+        .selectAll("text.moonLabel")
+        .data(moonNodes)
+        .enter().append("text")
+        .attr("text-anchor", "middle")
+        .style("fill", "#444")
+        .style("pointer-events", "none")
+        .style("font-size", "13px")
+        .each(function (d) {
+            const label = d3.select(this);
+            const words = d.id.split(" ");
+            let line = [], lineNum = 0;
+
+            words.forEach(w => {
+                line.push(w);
+                if (line.join(" ").length > 14) {
+                    line.pop();
+                    label.append("tspan")
+                        .text(line.join(" "))
+                        .attr("x", 0)
+                        .attr("dy", lineNum === 0 ? -d.r - 8 : 14);
+                    line = [w];
+                    lineNum++;
+                }
+            });
+
+            if (line.length) {
+                label.append("tspan")
+                    .text(line.join(" "))
+                    .attr("x", 0)
+                    .attr("dy", lineNum === 0 ? -d.r - 8 : 14);
+            }
+
+            label.append("tspan")
+                .text(d.count.toLocaleString() + " cases")
+                .attr("x", 0)
+                .attr("dy", 14)
+                .style("font-size", "12px")
+                .style("font-weight", "600");
+        });
+
+    // ----------------------------------------------------------
+    // Animation
+    // ----------------------------------------------------------
+    tick();
+    requestAnimationFrame(animate);
+
+    function animate() {
         const t = Date.now();
 
         nodes.forEach(n => {
-            if (n.type === "borough") {
-
-                if (n.dragging) {
-                    // while dragging → DO NOT overwrite manual position
-                    n.lastDraggedX = n.x;
-                    n.lastDraggedY = n.y;
-                    return;
-                }
-
-                // smooth glide back to orbit
-                const baseX = center.x + orbitRadius * Math.cos(n.baseAngle);
-                const baseY = center.y + orbitRadius * Math.sin(n.baseAngle);
-
-                const wobbleX = smoothNoise(t, n.noiseOffset) * 40;
-                const wobbleY = smoothNoise(t, n.noiseOffset + 2000) * 40;
-
-                const targetX = baseX + wobbleX;
-                const targetY = baseY + wobbleY;
-
-                const ease = 0.04;  // controls natural smooth glide
-
-                n.x += (targetX - n.x) * ease;
-                n.y += (targetY - n.y) * ease;
+            if (n.type === "borough" && !n.dragging) {
+                const tx = center.x + orbitRadius * Math.cos(n.baseAngle);
+                const ty = center.y + orbitRadius * Math.sin(n.baseAngle);
+                n.x += (tx - n.x) * 0.04 + smoothNoise(t, n.noiseOffset) * 0.4;
+                n.y += (ty - n.y) * 0.04 + smoothNoise(t, n.noiseOffset + 2000) * 0.4;
             }
         });
 
-        ticked();
-        requestAnimationFrame(animateNatural);
+        moonNodes.forEach(m => {
+            const p = nodes.find(n => n.id === m.borough);
+            if (!m.dragging) {
+                const tx = p.x + m.offsetX + smoothNoise(t, m.noiseOffset) * 3;
+                const ty = p.y + m.offsetY + smoothNoise(t, m.noiseOffset + 2000) * 3;
+                m.x += (tx - m.x) * 0.08;
+                m.y += (ty - m.y) * 0.08;
+            }
+        });
+
+        tick();
+        requestAnimationFrame(animate);
     }
 
-    animateNatural();
+    function tick() {
+        planetCircles.attr("cx", d => d.x).attr("cy", d => d.y);
+        moonCircles.attr("cx", d => d.x).attr("cy", d => d.y);
 
-    // -------------------------------------------------------------
-    // DRAGGING (smooth)
-    // -------------------------------------------------------------
-    function dragStart(event, d) {
-        if (d.type === "borough") d.dragging = true;
-        simulation.alphaTarget(0.3).restart();
-    }
+        labels.attr("transform", d => `translate(${d.x},${d.y})`);
+        moonLabels.attr("transform", d => `translate(${d.x},${d.y})`);
 
-    function dragMove(event, d) {
-        if (d.dragging) {
-            d.x = event.x;
-            d.y = event.y;
-        }
-    }
-
-    function dragEnd(event, d) {
-        d.dragging = false;
-        simulation.alphaTarget(0);
-    }
-
-    // -------------------------------------------------------------
-    // TICK UPDATE
-    // -------------------------------------------------------------
-    function ticked() {
-        circles.attr("cx", d => d.x).attr("cy", d => d.y);
-
-        labels.attr("x", d => d.x).attr("y", d => d.y);
-
+        // Sun → Borough
         linkLines
             .attr("x1", d => d.source.x)
             .attr("y1", d => d.source.y)
             .attr("x2", d => d.target.x)
             .attr("y2", d => d.target.y);
+
+        // Borough → Moon connectors start at planet edge
+        moonLinks
+            .attr("x1", d => {
+                const p = nodes.find(n => n.id === d.borough);
+                const dx = d.x - p.x, dy = d.y - p.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                return p.x + (dx / dist) * p.r;
+            })
+            .attr("y1", d => {
+                const p = nodes.find(n => n.id === d.borough);
+                const dx = d.x - p.x, dy = d.y - p.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                return p.y + (dy / dist) * p.r;
+            })
+            .attr("x2", d => d.x)
+            .attr("y2", d => d.y);
     }
 
 });
