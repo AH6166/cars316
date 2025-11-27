@@ -1,7 +1,8 @@
 // --------------------------------------------------------------------
-// ORBIT VISUALIZATION (FULL FINAL VERSION — Full Factor Names)
+// ORBIT VISUALIZATION
 // Sun + Boroughs + Contributing Factor Moons
-// Centered labels, full factor names wrapped naturally, “cases” included
+// Year + Vehicle-type filters (top 5 VEHICLE_TYPE)
+// No page reload on filter change
 // --------------------------------------------------------------------
 
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
@@ -9,13 +10,13 @@ import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 const width = window.innerWidth;
 const height = window.innerHeight;
 
-d3.select("body").style("background", "#f5f5f5");
-
 const svg = d3.select("#chart").append("svg")
     .attr("width", width)
     .attr("height", height);
 
 const tooltip = d3.select("#tooltip");
+const yearSelect = d3.select("#yearSelect");
+const vehicleSelect = d3.select("#vehicleSelect");
 
 // Glow Filter
 const defs = svg.append("defs");
@@ -25,10 +26,11 @@ const feMerge = glow.append("feMerge");
 feMerge.append("feMergeNode").attr("in", "blur");
 feMerge.append("feMergeNode").attr("in", "SourceGraphic");
 
+// Layer for dynamic viz elements
+const vizLayer = svg.append("g").attr("class", "viz-layer");
+
 const boroughs = ["BROOKLYN", "QUEENS", "MANHATTAN", "BRONX", "STATEN ISLAND"];
 const center = { x: width / 2, y: height / 2 };
-
-// Slightly closer to sun to avoid clipping
 const orbitRadius = 330;
 
 // Subtle movement noise
@@ -37,218 +39,360 @@ function smoothNoise(t, o) {
         Math.sin(t * 0.0007 + o * 1.7) * 0.3;
 }
 
-// --------------------------------------------------------------------
+// Helpers to read filters from URL (for initial load)
+function getYearFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    const y = params.get("year");
+    return y ? parseInt(y, 10) : null;
+}
+
+function getVehicleFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get("veh");
+    return v || null;
+}
+
 d3.csv("../data/original/collisions_severity.csv").then(data => {
+    // Clean + extract YEAR
+    data.forEach(d => {
+        d.BOROUGH = d.BOROUGH?.trim().toUpperCase();
+        d.VEHICLE_TYPE = d.VEHICLE_TYPE?.trim();
 
-    data.forEach(d => d.BOROUGH = d.BOROUGH?.trim().toUpperCase());
-    const filtered = data.filter(d => boroughs.includes(d.BOROUGH));
-
-    const boroughCounts = {};
-    boroughs.forEach(b => boroughCounts[b] = 0);
-    filtered.forEach(d => boroughCounts[d.BOROUGH]++);
-
-    const nycTotal = d3.sum(Object.values(boroughCounts));
-
-    const radiusScale = d3.scaleLinear()
-        .domain(d3.extent(Object.values(boroughCounts)))
-        .range([55, 115]);
-
-    const nodes = [];
-
-    // SUN
-    nodes.push({
-        id: "NEW YORK",
-        type: "sun",
-        count: nycTotal,
-        r: 140,
-        x: center.x,
-        y: center.y,
-        color: "#EBDFAF"
-    });
-
-    // BOROUGHS
-    boroughs.forEach((b, i) => {
-        const ang = (i / boroughs.length) * Math.PI * 2;
-        nodes.push({
-            id: b,
-            type: "borough",
-            count: boroughCounts[b],
-            baseAngle: ang,
-            r: radiusScale(boroughCounts[b]),
-            noiseOffset: Math.random() * 20000,
-            color: "#C3B9A6",
-            x: center.x + orbitRadius * Math.cos(ang),
-            y: center.y + orbitRadius * Math.sin(ang)
-        });
-    });
-
-    // CONTRIBUTING FACTORS
-    const factorCounts = {};
-    boroughs.forEach(b => factorCounts[b] = {});
-
-    filtered.forEach(d => {
-        const f = d.CONTRIBUTING_FACTOR_1?.trim();
-        if (f && f !== "Unspecified") {
-            factorCounts[d.BOROUGH][f] = (factorCounts[d.BOROUGH][f] || 0) + 1;
+        if (d.CRASH_DATE) {
+            const parts = d.CRASH_DATE.split("/");
+            const yr = parts.length === 3 ? parseInt(parts[2], 10) : null;
+            d.YEAR = yr;
+        } else {
+            d.YEAR = null;
         }
     });
 
-    // MOONS — full factor names
-    const moonNodes = [];
-    boroughs.forEach(b => {
-        const parent = nodes.find(n => n.id === b);
+    // Years
+    const years = [...new Set(
+        data.map(d => d.YEAR).filter(y => y != null && !Number.isNaN(y))
+    )].sort((a, b) => a - b);
 
-        const top3 = Object.entries(factorCounts[b])
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3);
-
-        const dist = parent.r + 50;
-
-        top3.forEach(([factor, count], i) => {
-            const angle = (i / top3.length) * Math.PI * 2;
-            moonNodes.push({
-                id: factor,
-                count,
-                type: "moon",
-                borough: b,
-                r: Math.max(7, Math.min(20, count / 30)),
-                angle,
-                offsetX: Math.cos(angle) * dist,
-                offsetY: Math.sin(angle) * dist,
-                x: parent.x,
-                y: parent.y,
-                noiseOffset: Math.random() * 20000,
-                color: "#a5a5a5"
-            });
-        });
+    // Top 5 vehicle types
+    const vehicleCounts = {};
+    data.forEach(d => {
+        if (!d.VEHICLE_TYPE) return;
+        vehicleCounts[d.VEHICLE_TYPE] =
+            (vehicleCounts[d.VEHICLE_TYPE] || 0) + 1;
     });
 
-    const planetLinks = nodes.filter(n => n.type === "borough")
-        .map(n => ({ source: nodes[0], target: n }));
+    const topVehicles = Object.entries(vehicleCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([v]) => v);
 
-    const linkLines = svg.append("g")
-        .selectAll("line.sunLink")
-        .data(planetLinks)
-        .enter().append("line")
-        .attr("stroke", "#bfbab2")
-        .attr("stroke-width", 2)
-        .attr("opacity", 0.7)
-        .attr("filter", "url(#soft-glow)");
+    // Initial filter state from URL
+    let selectedYear = years.includes(getYearFromURL()) ? getYearFromURL() : null;
+    let selectedVehicle = topVehicles.includes(getVehicleFromURL())
+        ? getVehicleFromURL()
+        : null;
 
-    const moonLinks = svg.append("g")
-        .selectAll("line.moonLink")
-        .data(moonNodes)
-        .enter().append("line")
-        .attr("stroke", "#c8c8c8")
-        .attr("stroke-width", 1.3)
-        .attr("opacity", 0.75);
+    // Build dropdowns
+    const yearOptions = ["all", ...years];
+    yearSelect
+        .selectAll("option")
+        .data(yearOptions)
+        .enter()
+        .append("option")
+        .attr("value", d => d === "all" ? "all" : d)
+        .text(d => d === "all" ? "All years" : d);
+    yearSelect.property("value", selectedYear ?? "all");
 
-    // PLANETS
-    const planetCircles = svg.append("g")
-        .selectAll("circle.planet")
-        .data(nodes)
-        .enter().append("circle")
-        .attr("class", "planet")
-        .attr("r", d => d.r)
-        .attr("fill", d => d.color)
-        .attr("stroke", "#eee8e0")
-        .attr("stroke-width", 3)
-        .call(
-            d3.drag()
-                .on("start", (e, d) => d.dragging = (d.type === "borough"))
-                .on("drag", (e, d) => { if (d.dragging) { d.x = e.x; d.y = e.y; } })
-                .on("end", (e, d) => d.dragging = false)
+    const vehicleOptions = ["all", ...topVehicles];
+    vehicleSelect
+        .selectAll("option")
+        .data(vehicleOptions)
+        .enter()
+        .append("option")
+        .attr("value", d => d === "all" ? "all" : d)
+        .text(d => d === "all"
+            ? "All vehicle types"
+            : d
         );
+    vehicleSelect.property("value", selectedVehicle ?? "all");
 
-    // MOONS
-    const moonCircles = svg.append("g")
-        .selectAll("circle.moon")
-        .data(moonNodes)
-        .enter().append("circle")
-        .attr("class", "moon")
-        .attr("r", d => d.r)
-        .attr("fill", d => d.color)
-        .attr("stroke", "#b9b9b9")
-        .attr("stroke-width", 1)
-        .style("opacity", 0.93)
-        .call(
-            d3.drag()
-                .on("start", (e, d) => d.dragging = true)
-                .on("drag", (e, d) => { d.x = e.x; d.y = e.y; })
-                .on("end", (e, d) => d.dragging = false)
-        );
+    // Animation data structures
+    let nodes = [];
+    let moonNodes = [];
+    let planetLinks = [];
 
-    // LABELS — SUN + BOROUGHS
-    const labels = svg.append("g")
-        .selectAll("text.nodeLabel")
-        .data(nodes)
-        .enter().append("text")
-        .attr("text-anchor", "middle")
-        .style("fill", "#3c3c3c")
-        .style("pointer-events", "none")
-        .each(function (d) {
-            const t = d3.select(this);
-            t.append("tspan")
-                .text(d.type === "sun" ? "New York" : d.id)
-                .attr("dy", "-4px")
-                .style("font-size", d.type === "sun" ? "34px" : "22px")
-                .style("font-weight", "700");
-            t.append("tspan")
-                .text(d.count.toLocaleString() + " cases")
-                .attr("x", 0)
-                .attr("dy", "22px")
-                .style("font-size", "17px")
-                .style("font-weight", "500");
+    let linkLines, moonLinks, planetCircles, moonCircles, labels, moonLabels;
+
+    // Keep URL in sync without reload
+    function syncURL() {
+        const params = new URLSearchParams(window.location.search);
+
+        if (selectedYear == null) params.delete("year");
+        else params.set("year", String(selectedYear));
+
+        if (selectedVehicle == null) params.delete("veh");
+        else params.set("veh", selectedVehicle);
+
+        const qs = params.toString();
+        const newUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+        window.history.replaceState(null, "", newUrl);
+    }
+
+    // Build / rebuild visualization from filtered data
+    function buildScene(filteredData) {
+        vizLayer.selectAll("*").remove();
+
+        const boroughCounts = {};
+        boroughs.forEach(b => boroughCounts[b] = 0);
+        filteredData.forEach(d => boroughCounts[d.BOROUGH]++);
+
+        const nycTotal = filteredData.length;
+
+        const radiusScale = d3.scaleLinear()
+            .domain(d3.extent(Object.values(boroughCounts)))
+            .range([55, 115]);
+
+        nodes = [];
+        moonNodes = [];
+        planetLinks = [];
+
+        // SUN
+        nodes.push({
+            id: "NEW YORK",
+            type: "sun",
+            count: nycTotal,
+            r: 140,
+            x: center.x,
+            y: center.y,
+            color: "#EBDFAF"
         });
 
-    // LABELS — MOONS (full wrapped)
-    const moonLabels = svg.append("g")
-        .selectAll("text.moonLabel")
-        .data(moonNodes)
-        .enter().append("text")
-        .attr("text-anchor", "middle")
-        .style("fill", "#444")
-        .style("pointer-events", "none")
-        .style("font-size", "13px")
-        .each(function (d) {
-            const label = d3.select(this);
-            const words = d.id.split(" ");
-            let line = [], lineNum = 0;
+        // BOROUGHS
+        boroughs.forEach((b, i) => {
+            const ang = (i / boroughs.length) * Math.PI * 2;
+            nodes.push({
+                id: b,
+                type: "borough",
+                count: boroughCounts[b],
+                baseAngle: ang,
+                r: radiusScale(boroughCounts[b]),
+                noiseOffset: Math.random() * 20000,
+                color: "#C3B9A6",
+                x: center.x + orbitRadius * Math.cos(ang),
+                y: center.y + orbitRadius * Math.sin(ang)
+            });
+        });
 
-            words.forEach(w => {
-                line.push(w);
-                if (line.join(" ").length > 14) {
-                    line.pop();
+        // CONTRIBUTING FACTORS
+        const factorCounts = {};
+        boroughs.forEach(b => factorCounts[b] = {});
+
+        filteredData.forEach(d => {
+            const f = d.CONTRIBUTING_FACTOR_1?.trim();
+            if (f && f !== "Unspecified") {
+                factorCounts[d.BOROUGH][f] =
+                    (factorCounts[d.BOROUGH][f] || 0) + 1;
+            }
+        });
+
+        // MOONS — full factor names
+        boroughs.forEach(b => {
+            const parent = nodes.find(n => n.id === b);
+
+            const top3 = Object.entries(factorCounts[b])
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 3);
+
+            const dist = parent.r + 50; // original distance
+
+            top3.forEach(([factor, count], i) => {
+                let angle = (i / top3.length) * Math.PI * 2;
+                let mAngle = angle;
+                let mDist = dist;
+
+                // Special tweak for Staten Island's problematic moon
+                if (b === "STATEN ISLAND" &&
+                    factor === "Driver Inattention/Distraction") {
+                    mAngle = angle + Math.PI * 0.2;
+                    mDist = dist + 20;
+                }
+
+                moonNodes.push({
+                    id: factor,
+                    count,
+                    type: "moon",
+                    borough: b,
+                    r: Math.max(7, Math.min(20, count / 30)),
+                    angle: mAngle,
+                    offsetX: Math.cos(mAngle) * mDist,
+                    offsetY: Math.sin(mAngle) * mDist,
+                    x: parent.x,
+                    y: parent.y,
+                    noiseOffset: Math.random() * 20000,
+                    color: "#a5a5a5"
+                });
+            });
+        });
+
+        planetLinks = nodes.filter(n => n.type === "borough")
+            .map(n => ({ source: nodes[0], target: n }));
+
+        // DRAW ----------------------------------------------------
+        linkLines = vizLayer.append("g")
+            .selectAll("line.sunLink")
+            .data(planetLinks)
+            .enter().append("line")
+            .attr("stroke", "#bfbab2")
+            .attr("stroke-width", 2)
+            .attr("opacity", 0.7)
+            .attr("filter", "url(#soft-glow)");
+
+        moonLinks = vizLayer.append("g")
+            .selectAll("line.moonLink")
+            .data(moonNodes)
+            .enter().append("line")
+            .attr("stroke", "#c8c8c8")
+            .attr("stroke-width", 1.3)
+            .attr("opacity", 0.75);
+
+        planetCircles = vizLayer.append("g")
+            .selectAll("circle.planet")
+            .data(nodes)
+            .enter().append("circle")
+            .attr("class", "planet")
+            .attr("r", d => d.r)
+            .attr("fill", d => d.color)
+            .attr("stroke", "#eee8e0")
+            .attr("stroke-width", 3)
+            .call(
+                d3.drag()
+                    .on("start", (e, d) => d.dragging = (d.type === "borough"))
+                    .on("drag", (e, d) => { if (d.dragging) { d.x = e.x; d.y = e.y; } })
+                    .on("end", (e, d) => d.dragging = false)
+            );
+
+        moonCircles = vizLayer.append("g")
+            .selectAll("circle.moon")
+            .data(moonNodes)
+            .enter().append("circle")
+            .attr("class", "moon")
+            .attr("r", d => d.r)
+            .attr("fill", d => d.color)
+            .attr("stroke", "#b9b9b9")
+            .attr("stroke-width", 1)
+            .style("opacity", 0.93)
+            .call(
+                d3.drag()
+                    .on("start", (e, d) => d.dragging = true)
+                    .on("drag", (e, d) => { d.x = e.x; d.y = e.y; })
+                    .on("end", (e, d) => d.dragging = false)
+            );
+
+        // LABELS — SUN + BOROUGHS
+        labels = vizLayer.append("g")
+            .selectAll("text.nodeLabel")
+            .data(nodes)
+            .enter().append("text")
+            .attr("text-anchor", "middle")
+            .style("fill", "#3c3c3c")
+            .style("pointer-events", "none")
+            .each(function (d) {
+                const t = d3.select(this);
+                t.append("tspan")
+                    .text(d.type === "sun" ? "New York" : d.id)
+                    .attr("dy", "-4px")
+                    .style("font-size", d.type === "sun" ? "34px" : "22px")
+                    .style("font-weight", "700");
+                t.append("tspan")
+                    .text(d.count.toLocaleString() + " cases")
+                    .attr("x", 0)
+                    .attr("dy", "22px")
+                    .style("font-size", "17px")
+                    .style("font-weight", "500");
+            });
+
+        // LABELS — MOONS (wrapped)
+        moonLabels = vizLayer.append("g")
+            .selectAll("text.moonLabel")
+            .data(moonNodes)
+            .enter().append("text")
+            .attr("text-anchor", "middle")
+            .style("fill", "#444")
+            .style("pointer-events", "none")
+            .style("font-size", "13px")
+            .each(function (d) {
+                const label = d3.select(this);
+                const words = d.id.split(" ");
+                let line = [], lineNum = 0;
+
+                words.forEach(w => {
+                    line.push(w);
+                    if (line.join(" ").length > 14) {
+                        line.pop();
+                        label.append("tspan")
+                            .text(line.join(" "))
+                            .attr("x", 0)
+                            .attr("dy", lineNum === 0 ? -d.r - 8 : 14); // original offset
+                        line = [w];
+                        lineNum++;
+                    }
+                });
+
+                if (line.length) {
                     label.append("tspan")
                         .text(line.join(" "))
                         .attr("x", 0)
-                        .attr("dy", lineNum === 0 ? -d.r - 8 : 14);
-                    line = [w];
-                    lineNum++;
+                        .attr("dy", lineNum === 0 ? -d.r - 8 : 14); // original offset
                 }
+
+                label.append("tspan")
+                    .text(d.count.toLocaleString() + " cases")
+                    .attr("x", 0)
+                    .attr("dy", 14)
+                    .style("font-size", "12px")
+                    .style("font-weight", "600");
             });
 
-            if (line.length) {
-                label.append("tspan")
-                    .text(line.join(" "))
-                    .attr("x", 0)
-                    .attr("dy", lineNum === 0 ? -d.r - 8 : 14);
-            }
+        tick();
+    }
 
-            label.append("tspan")
-                .text(d.count.toLocaleString() + " cases")
-                .attr("x", 0)
-                .attr("dy", 14)
-                .style("font-size", "12px")
-                .style("font-weight", "600");
-        });
+    // Apply filters -> compute filtered data -> rebuild scene
+    function applyFilters() {
+        const filtered = data.filter(d =>
+            boroughs.includes(d.BOROUGH) &&
+            (selectedYear == null || d.YEAR === selectedYear) &&
+            (selectedVehicle == null || d.VEHICLE_TYPE === selectedVehicle)
+        );
+
+        const finalData = filtered.length > 0
+            ? filtered
+            : data.filter(d =>
+                boroughs.includes(d.BOROUGH) &&
+                (selectedYear == null || d.YEAR === selectedYear)
+            );
+
+        buildScene(finalData);
+        syncURL();
+    }
+
+    // Dropdown handlers
+    yearSelect.on("change", () => {
+        const val = yearSelect.property("value");
+        selectedYear = (val === "all") ? null : +val;
+        applyFilters();
+    });
+
+    vehicleSelect.on("change", () => {
+        const val = vehicleSelect.property("value");
+        selectedVehicle = (val === "all") ? null : val;
+        applyFilters();
+    });
+
+    // Initial render
+    applyFilters();
 
     // ----------------------------------------------------------
     // Animation
     // ----------------------------------------------------------
-    tick();
-    requestAnimationFrame(animate);
-
     function animate() {
         const t = Date.now();
 
@@ -263,6 +407,7 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
 
         moonNodes.forEach(m => {
             const p = nodes.find(n => n.id === m.borough);
+            if (!p) return;
             if (!m.dragging) {
                 const tx = p.x + m.offsetX + smoothNoise(t, m.noiseOffset) * 3;
                 const ty = p.y + m.offsetY + smoothNoise(t, m.noiseOffset + 2000) * 3;
@@ -276,35 +421,47 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
     }
 
     function tick() {
-        planetCircles.attr("cx", d => d.x).attr("cy", d => d.y);
-        moonCircles.attr("cx", d => d.x).attr("cy", d => d.y);
+        if (planetCircles) {
+            planetCircles.attr("cx", d => d.x).attr("cy", d => d.y);
+        }
+        if (moonCircles) {
+            moonCircles.attr("cx", d => d.x).attr("cy", d => d.y);
+        }
+        if (labels) {
+            labels.attr("transform", d => `translate(${d.x},${d.y})`);
+        }
+        if (moonLabels) {
+            moonLabels.attr("transform", d => `translate(${d.x},${d.y})`);
+        }
 
-        labels.attr("transform", d => `translate(${d.x},${d.y})`);
-        moonLabels.attr("transform", d => `translate(${d.x},${d.y})`);
+        if (linkLines) {
+            linkLines
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+        }
 
-        // Sun → Borough
-        linkLines
-            .attr("x1", d => d.source.x)
-            .attr("y1", d => d.source.y)
-            .attr("x2", d => d.target.x)
-            .attr("y2", d => d.target.y);
-
-        // Borough → Moon connectors start at planet edge
-        moonLinks
-            .attr("x1", d => {
-                const p = nodes.find(n => n.id === d.borough);
-                const dx = d.x - p.x, dy = d.y - p.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                return p.x + (dx / dist) * p.r;
-            })
-            .attr("y1", d => {
-                const p = nodes.find(n => n.id === d.borough);
-                const dx = d.x - p.x, dy = d.y - p.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                return p.y + (dy / dist) * p.r;
-            })
-            .attr("x2", d => d.x)
-            .attr("y2", d => d.y);
+        if (moonLinks) {
+            moonLinks
+                .attr("x1", d => {
+                    const p = nodes.find(n => n.id === d.borough);
+                    if (!p) return d.x;
+                    const dx = d.x - p.x, dy = d.y - p.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                    return p.x + (dx / dist) * p.r;
+                })
+                .attr("y1", d => {
+                    const p = nodes.find(n => n.id === d.borough);
+                    if (!p) return d.y;
+                    const dx = d.x - p.x, dy = d.y - p.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                    return p.y + (dy / dist) * p.r;
+                })
+                .attr("x2", d => d.x)
+                .attr("y2", d => d.y);
+        }
     }
 
+    requestAnimationFrame(animate);
 });
