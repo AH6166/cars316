@@ -62,7 +62,13 @@
     <section class="section" id="slide-day">
         <div class="slide-content">
             <h2>Risk by Day of Week</h2>
-            <div id="day-chart" class="chart-container"></div>
+            <div class="chart-header">
+                <label class="toggle">
+                    <input type="checkbox" id="dow-injury-mode"/>
+                    <span>Injury mode</span>
+                </label>
+            </div>
+            <div id="viz-dow" class="chart-container" style="height:52vh; min-height:420px;"></div>
         </div>
     </section>
 
@@ -70,7 +76,13 @@
     <section class="section" id="slide-vehicle">
         <div class="slide-content">
             <h2>Risk by Vehicle Type</h2>
-            <div id="vehicle-chart" class="chart-container"></div>
+            <div class="chart-header">
+                <label class="toggle">
+                    <input type="checkbox" id="vehicle-injury-mode"/>
+                    <span>Injury mode</span>
+                </label>
+            </div>
+            <div id="viz-vehicle" class="chart-container" style="height:52vh; min-height:420px;"></div>
         </div>
     </section>
 
@@ -78,7 +90,13 @@
     <section class="section" id="slide-gender">
         <div class="slide-content">
             <h2>Male vs Female Drivers</h2>
-            <div id="gender-chart" class="chart-container"></div>
+            <div class="chart-header">
+                <label class="toggle">
+                    <input type="checkbox" id="gender-injury-mode"/>
+                    <span>Injury mode</span>
+                </label>
+            </div>
+            <div id="viz-gender" class="chart-container" style="height:52vh; min-height:420px;"></div>
         </div>
     </section>
 
@@ -86,7 +104,18 @@
     <section class="section" id="slide-map">
         <div class="slide-content">
             <h2>Accident Locations</h2>
-            <div id="dot-map" class="chart-container"></div>
+            <div class="chart-header controls-inline">
+                <div class="control-group">
+                    <label for="hour-slider">Hour:</label>
+                    <input id="hour-slider" type="range" min="0" max="23" step="1" value="0" />
+                    <output id="hour-label" for="hour-slider">00:00</output>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" id="map-injury-mode"/>
+                    <span>Injury mode</span>
+                </label>
+            </div>
+            <div id="leaflet-map" class="chart-container" style="height:60vh;"></div>
         </div>
     </section>
 
@@ -102,7 +131,19 @@
     <section class="section" id="slide-heatmap">
         <div class="slide-content">
             <h2>Risk by Time of Day</h2>
-            <div id="heatmap-chart" class="chart-container"></div>
+            <div class="chart-header controls-inline">
+                <div class="control-group">
+                    <span>Normalize:</span>
+                    <label><input type="radio" name="hm-norm" id="hm-norm-global" value="global" checked> Global</label>
+                    <label><input type="radio" name="hm-norm" id="hm-norm-percol" value="perColumn"> Per column</label>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" id="hm-injury-mode"/>
+                    <span>Injury mode</span>
+                </label>
+            </div>
+            <div id="chart" class="chart-container" style="height:60vh;"></div>
+            <p id="time-insight" class="intro-subtext" style="margin-top:12px;"></p>
         </div>
     </section>
 
@@ -110,7 +151,14 @@
     <section class="section" id="slide-why">
         <div class="slide-content">
             <h2>Why Injuries Occur</h2>
-            <div id="factor-chart" class="chart-container"></div>
+            <div class="chart-header">
+                <label class="toggle">
+                    <input type="checkbox" id="factors-injury-mode"/>
+                    <span>Injury mode</span>
+                </label>
+            </div>
+            <div id="factors" class="chart-container" style="height:60vh;"></div>
+            <div id="factors-legend" class="legend-wrap" style="margin-top:8px;"></div>
         </div>
     </section>
 
@@ -118,7 +166,36 @@
     <section class="section" id="slide-estimator">
         <div class="slide-content">
             <h2>Estimate Your Scenario</h2>
-            <div id="estimator-ui" class="chart-container"></div>
+            <div class="chart-header"></div>
+            <div class="chart-container">
+                <form id="estimator-form" class="estimator-form">
+                    <div class="row">
+                        <div class="col">
+                            <label for="est-vehicle">Vehicle type</label>
+                            <select id="est-vehicle"></select>
+                        </div>
+                        <div class="col">
+                            <label for="est-action">Vehicle action</label>
+                            <select id="est-action"></select>
+                        </div>
+                        <div class="col">
+                            <label for="est-borough">Borough</label>
+                            <select id="est-borough"></select>
+                        </div>
+                        <div class="col">
+                            <label for="est-hour">Hour</label>
+                            <select id="est-hour"></select>
+                        </div>
+                        <div class="col">
+                            <label for="est-dow">Day of week</label>
+                            <select id="est-dow"></select>
+                        </div>
+                    </div>
+                </form>
+                <div class="estimator-output-wrap">
+                    <div id="estimator-output" aria-live="polite">Select options to see an estimate.</div>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -126,7 +203,7 @@
     <section class="section" id="slide-chains">
         <div class="slide-content">
             <h2>Best vs Worst Risk Chains</h2>
-            <div id="chains-chart" class="chart-container"></div>
+            <div id="viz-chains" class="chart-container" style="height:52vh; min-height:420px;"></div>
         </div>
     </section>
 
@@ -142,7 +219,10 @@
 
 
 <!-- JS Libraries -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fullPage.js/4.0.20/fullpage.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
 <script>
     new fullpage('#fullpage', {
@@ -167,16 +247,10 @@
     });
 </script>
 
-<!-- Data visualizations -->
-<script src="js/main.js"></script>
-<script src="js/analysis.js"></script>
-<script src="js/dataLoader.js"></script>
-<script src="js/dataProcessor.js"></script>
-<script src="js/factorViz.js"></script>
-<script src="js/pointMap.js"></script>
-<script src="js/regionMap.js"></script>
-<script src="js/heatmapChart.js"></script>
-<script src="js/extraViz.js"></script>
+<div id="tooltip" class="tooltip"></div>
+
+<!-- App entry -->
+<script type="module" src="js/main.js"></script>
 
 </body>
 </html>
