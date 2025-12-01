@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crash Data: Time, Location, and Factors</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <!-- Playful Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
+  <!-- App styles -->
+  <link rel="stylesheet" href="../css/styles.css" />
+  <!-- D3 -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+</head>
+<body>
+  <!-- Hero -->
+  <header class="hero py-5 text-center reveal" data-reveal-delay="0">
+    <div class="container">
+      <h1 class="display-4 hero-title">Crash Data</h1>
+      <p class="lead hero-tagline mb-3">This page is a small map of choices. The data uses the full NYC crash records provided in this repository. The visuals are simple. The goal is clarity. The intent is action.</p>
+      <p class="subtitle">Data: NYC Open Data - Motor Vehicle Collisions</p>
+      <p class="subtitle">Authors: Felix Wu; Benjamin He; Andrew Hu</p>
+    </div>
+  </header>
+
+  <!-- Quick Risk Snapshot 1: Day of week -->
+  <section class="py-5 section-card reveal" data-reveal-delay="30">
+    <div class="container">
+      <h2 class="section-title mb-2">Risk by day of week</h2>
+      <p class="section-copy small mb-3">
+        What this shows: a simple Monday→Sunday comparison. Toggle Injury mode to switch between two views:
+        • Off: total crash counts by day.
+        • On: the share of crashes that involved injuries by day, with a dashed line showing the dataset average.
+        How we calculate it (Injury mode): injury crashes divided by all crashes for that day, with a light stabilizer so tiny samples don’t swing wildly. How to read it: in Injury mode, bars above the dashed line suggest riskier‑than‑average; below suggests calmer (within this file).
+      </p>
+      <div class="chart-card p-2 p-md-3">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><div class="chart-title">Most dangerous day of week</div><div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="dow-injury-mode"><label class="form-check-label" for="dow-injury-mode">Injury mode</label></div></div>
+        <div id="viz-dow" class="chart-wrap" style="height:52vh; min-height:420px;" aria-label="Bar chart of empirically shrunk injury rate by day of week"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Risk Snapshot 2: Vehicle type -->
+  <section class="py-5 section-card alt reveal" data-reveal-delay="45">
+    <div class="container">
+      <h2 class="section-title mb-2">Risk by vehicle type</h2>
+      <p class="section-copy small mb-3">
+        What this shows: how vehicle type relates to risk. Use the Injury mode switch to view:
+        • Off: total crash counts for the most common vehicle types (we limit to common types for stability).
+        • On: the share of crashes that involved injuries for each type, with a dashed line showing the dataset average. Estimates for very small groups are lightly stabilized.
+        How to read it: in Injury mode, bars right of the dashed line indicate higher‑than‑average injury share in this file; left indicates lower.
+      </p>
+      <div class="chart-card p-2 p-md-3">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><div class="chart-title">Most dangerous vehicle type</div><div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="vehicle-injury-mode"><label class="form-check-label" for="vehicle-injury-mode">Injury mode</label></div></div>
+        <div id="viz-vehicle" class="chart-wrap" style="height:52vh; min-height:420px;" aria-label="Bar chart of empirically shrunk injury rate by vehicle type"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Risk Snapshot 3: Driver sex -->
+  <section class="py-5 section-card reveal" data-reveal-delay="60">
+    <div class="container">
+      <h2 class="section-title mb-2">Male vs female drivers</h2>
+      <p class="section-copy small mb-3">
+        What this shows: outcomes by recorded driver sex (Male, Female, and an Other/Unknown bucket). Use the Injury mode switch:
+        • Off: total crash counts by group.
+        • On: the share of crashes that involved injuries for each group, with a dashed line showing the dataset average. Very small groups are lightly stabilized to reduce noise.
+        Notes: some records are missing or ambiguous; those are grouped under Other/Unknown.
+      </p>
+      <div class="chart-card p-2 p-md-3">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><div class="chart-title">Male vs female drivers</div><div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="gender-injury-mode"><label class="form-check-label" for="gender-injury-mode">Injury mode</label></div></div>
+        <div id="viz-gender" class="chart-wrap" style="height:52vh; min-height:420px;" aria-label="Bar chart comparing injury rate for male vs female drivers with EB shrinkage"></div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- Chapter 1: Place → See where risk lives -->
+  <section class="py-5 section-card alt reveal" data-reveal-delay="60">
+    <div class="container">
+      <div class="row align-items-start g-4 flex-lg-row-reverse">
+        <div class="col-lg-5">
+          <div class="chapter-label">Chapter 1 · Place</div>
+          <h2 class="section-title">See where risk lives</h2>
+          <p class="section-copy">How this map is made: we read the crash file, keep rows with valid date, time, and location, and render each crash as a dot. Dots keep the same on‑screen size as you zoom so clusters remain visible. Use the Hour slider to filter crashes to a specific hour (e.g., 07:00–07:59).
+          Injury mode: when off, all dots share one color. When on, crashes that involved injuries are colored by number/severity (deeper color = more severe or more people hurt) and sized slightly larger; non‑injury crashes are dimmed. This highlights where injuries concentrate at the selected hour.
+          What to look for: clusters point to busy, risk‑heavy streets and junctions; commute hours spread activity along corridors; late‑night hours concentrate in fewer spots.</p>
+        </div>
+        <div class="col-lg-7">
+          <div class="chart-card p-2 p-md-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+              <div class="chart-title m-0">Accident Locations on Streets (Dots)</div>
+              <div class="d-flex align-items-center gap-3 flex-wrap" aria-label="Map controls">
+                <div class="d-flex align-items-center gap-2" aria-label="Filter crashes by hour">
+                  <label for="hour-slider" class="form-label mb-0">Hour:</label>
+                  <input id="hour-slider" type="range" min="0" max="23" step="1" value="0" class="form-range" style="width:180px" aria-valuemin="0" aria-valuemax="23" aria-valuenow="0" aria-label="Hour of day slider">
+                  <output id="hour-label" for="hour-slider" class="badge bg-secondary" aria-live="polite">00:00</output>
+                </div>
+                <div class="form-check form-switch m-0">
+                  <input class="form-check-input" type="checkbox" role="switch" id="map-injury-mode">
+                  <label class="form-check-label" for="map-injury-mode">Injury mode</label>
+                </div>
+              </div>
+            </div>
+            <div id="leaflet-map" class="chart-wrap" style="height:60vh;" aria-label="Leaflet basemap of New York City with crash dots filtered by selected hour"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Orbit Accident Map -->
+  <section class="py-5 section-card reveal" data-reveal-delay="90">
+    <div class="container">
+      <h2 class="section-title mb-2">Orbit accident map</h2>
+      <p class="section-copy small mb-3">
+        A playful, orbital view of NYC crashes: the center is the city, boroughs orbit around it, and smaller moons represent contributing factors. Use the dropdowns to filter by year and vehicle type. Hover to see details; motion is subtle and continuous.
+      </p>
+      <div class="chart-card p-2 p-md-3">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+          <div class="chart-title m-0">Orbit map (interactive)</div>
+          <a class="btn btn-sm btn-outline-light" href="orbit.html" target="_blank" rel="noopener noreferrer">Open full screen</a>
+        </div>
+        <div class="chart-wrap p-0" style="height:60vh; min-height:420px; border-top: none;">
+          <iframe src="orbit.html" title="NYC Orbit Accident Map" style="width:100%; height:100%; border:0; border-radius: 12px; background:#0a1573;" loading="lazy"></iframe>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Chapter 2: Time → Find calmer hours -->
+  <section class="py-5 section-card reveal" data-reveal-delay="120">
+    <div class="container">
+      <div class="row align-items-start g-4">
+        <div class="col-lg-5">
+          <div class="chapter-label">Chapter 2 · Time</div>
+          <h2 class="section-title">Find calmer hours</h2>
+          <p class="section-copy">How this heatmap is made: it’s a month‑by‑hour grid. Each cell summarizes the crashes in that month at that hour. You can zoom the time axis (Ctrl/Cmd + scroll or pinch) and use vertical scroll over the chart to cycle the hour order.
+          Color and toggles:
+          • Injury mode off: color shows relative frequency. Global compares all cells to each other; Per column compares hours within each month (good for spotting daily patterns in quieter months).
+          • Injury mode on: color shows the share of crashes that involved injuries in each cell. In this mode, the normalization setting is ignored and the legend shows percentages. Tooltips display counts and injury share.
+          Reading tip: colors are percentile‑based within the current view. “Hotter” means higher relative value in this window, not an absolute unit scale.</p>
+        </div>
+        <div class="col-lg-7">
+          <div class="chart-card p-2 p-md-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="chart-title">Temporal Heatmap (Month × Hour)</div>
+              <div class="d-flex align-items-center gap-3 small flex-wrap" role="group" aria-label="Heatmap controls">
+                <div class="form-check form-switch m-0">
+                  <input class="form-check-input" type="checkbox" role="switch" id="hm-injury-mode">
+                  <label class="form-check-label" for="hm-injury-mode">Injury mode</label>
+                </div>
+                <div class="d-flex align-items-center gap-2" aria-label="Heatmap normalization mode">
+                  <span>Normalize:</span>
+                  <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="hm-norm" id="hm-norm-global" value="global" checked>
+                    <label class="form-check-label" for="hm-norm-global">Global</label>
+                  </div>
+                  <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="hm-norm" id="hm-norm-percol" value="perColumn">
+                    <label class="form-check-label" for="hm-norm-percol">Per column</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="chart" class="chart-wrap" aria-label="Temporal heatmap showing collisions per month and hour"></div>
+            <div id="chart-legend" class="legend-wrap mt-2" aria-label="Legend for temporal heatmap"></div>
+            <div id="time-insight" class="mt-2 small" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Chapter 3: Why → Choose better defaults -->
+  <section class="py-5 section-card reveal" data-reveal-delay="180">
+    <div class="container">
+      <div class="row align-items-start g-4">
+        <div class="col-lg-5">
+          <div class="chapter-label">Chapter 3 · Why</div>
+          <h2 class="section-title">Choose better defaults</h2>
+          <p class="section-copy">What this shows: conditions that line up with injuries more often (or less often) than the dataset average. Examples include driver actions, vehicle types, hours, contributing factors, and borough.
+          How we rank them: for each value we compare its injury share to the overall average and compute a standard chi‑square score. Large, consistent differences rise to the top; tiny, noisy groups are filtered out.
+          Injury mode: when off, the x‑axis is the chi‑square score (how strongly the value explains variation). When on, the x‑axis switches to the injury rate for that value, shown as a percentage. Color encodes direction via risk ratio: red = higher than average, green = lower.
+          Reading tip: prioritize items with both high rank and large sample sizes.</p>
+        </div>
+        <div class="col-lg-7">
+          <div class="chart-card p-2 p-md-3 mb-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="chart-title">Most explanatory factors (injury likelihood)</div>
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" role="switch" id="factors-injury-mode">
+                <label class="form-check-label" for="factors-injury-mode">Injury mode</label>
+              </div>
+            </div>
+            <div id="factors" class="chart-wrap" style="height:60vh;" aria-label="Bar chart of most significant factors by chi-square score"></div>
+            <div id="factors-legend" class="legend-wrap mt-2" aria-label="Legend for factors chart"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Personalized Injury Risk Estimator -->
+  <section class="py-5 section-card reveal" data-reveal-delay="200">
+    <div class="container">
+      <div class="row align-items-start g-4">
+        <div class="col-lg-5">
+          <div class="chapter-label">Personal tool</div>
+          <h2 class="section-title">Estimate injury risk</h2>
+          <p class="section-copy">Enter a few basics about the situation. The estimator uses a regularized statistical model trained on this dataset to predict the chance that a crash involved injuries for that combination. It guards against overfitting by sharing information across similar groups.</p>
+        </div>
+        <div class="col-lg-7">
+          <div class="chart-card p-3">
+            <div class="chart-title d-flex justify-content-between align-items-center">
+              <span>Your scenario</span>
+              <a href="../estimator-help.html" class="btn btn-sm btn-outline-light" aria-label="Learn how the estimator works (opens help in a new tab)" target="_blank" rel="noopener noreferrer" title="How does this work?">?
+              </a>
+            </div>
+            <form id="estimator-form" class="row g-3">
+              <div class="col-sm-6 col-md-4">
+                <label for="est-vehicle" class="form-label">Vehicle type</label>
+                <select id="est-vehicle" class="form-select form-select-sm" aria-label="Vehicle type select"></select>
+              </div>
+              <div class="col-sm-6 col-md-4">
+                <label for="est-action" class="form-label">Vehicle action</label>
+                <select id="est-action" class="form-select form-select-sm" aria-label="Pre-crash action select"></select>
+              </div>
+              <div class="col-sm-6 col-md-4">
+                <label for="est-borough" class="form-label">Borough</label>
+                <select id="est-borough" class="form-select form-select-sm" aria-label="Borough select"></select>
+              </div>
+              <div class="col-sm-6 col-md-4">
+                <label for="est-hour" class="form-label">Hour</label>
+                <select id="est-hour" class="form-select form-select-sm" aria-label="Hour select"></select>
+              </div>
+              <div class="col-sm-6 col-md-4">
+                <label for="est-dow" class="form-label">Day of week</label>
+                <select id="est-dow" class="form-select form-select-sm" aria-label="Day of week select"></select>
+              </div>
+            </form>
+            <div class="mt-3">
+              <div id="estimator-output" class="h5" aria-live="polite">Select options to see an estimate.</div>
+              <div id="estimator-note" class="small mt-2" style="color: var(--muted);">Method: L2‑regularized logistic regression on hashed features (vehicle type, action, borough, hour, day of week), trained on this file’s records. Estimates are probabilities in this dataset, not guarantees.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Best vs Worst Risk Chains -->
+  <section class="py-5 section-card alt reveal" data-reveal-delay="210">
+    <div class="container">
+      <h2 class="section-title mb-2">Best vs worst risk chains</h2>
+      <p class="section-copy small mb-3">
+        What this shows: two chains built from the five estimator inputs (vehicle type, vehicle action, borough, hour, day of week). Starting from an empty scenario, we add one choice at a time — always picking the option that most increases the model’s predicted injury risk (worst chain) or most decreases it (best chain) while staying grounded in enough real records.
+        How to read it: each step shows the chosen condition, the estimated injury probability for the chain up to that point, and how many crashes in the data match that combination. Think of it as “if you also add this, risk goes up/down this much.”
+      </p>
+      <div class="chart-card p-2 p-md-3">
+        <div class="chart-title">Decision chains (model-based)</div>
+        <div id="viz-chains" class="chart-wrap" style="height:52vh; min-height:420px;" aria-label="Two decision chains showing combinations with highest and lowest predicted injury risk"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Call to action -->
+
+  <div id="tooltip" class="tooltip"></div>
+
+  <!-- Scroll reveal for sections (lightweight, accessible) -->
+  <script>
+    (function() {
+      const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const els = document.querySelectorAll('.reveal');
+      if (prefersReduced) {
+        els.forEach(el => el.classList.add('in-view'));
+        return;
+      }
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const delay = parseInt(entry.target.getAttribute('data-reveal-delay') || '0', 10);
+            setTimeout(() => entry.target.classList.add('in-view'), delay);
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1 });
+      els.forEach(el => io.observe(el));
+    })();
+  </script>
+
+  <script type="module" src="../js/main.js"></script>
+  <!-- Bootstrap JS (optional, no jQuery needed) Test -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+</body>
+</html>
