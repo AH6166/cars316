@@ -19,6 +19,38 @@
     <link rel="stylesheet" href="css/styles.css"/>
     <link rel="stylesheet" href="css/style2.css"/>
 
+    <style>
+    /* Fullpage up/down buttons */
+    .fp-nav-btn {
+      position: fixed;
+      /* move left from the edge so it doesn't overlap fullPage's nav dots */
+      right: 78px;
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      background: rgba(3,7,18,0.55);
+      color: #fff;
+      border: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 1200;
+      box-shadow: 0 6px 18px rgba(2,6,23,0.45);
+      font-size: 18px;
+      line-height: 1;
+      transition: transform 120ms ease, background 120ms ease;
+    }
+    .fp-nav-btn:active { transform: translateY(1px); }
+    .fp-nav-btn:hover { background: rgba(3,7,18,0.7); }
+    #fp-up-btn { top: calc(50% - 64px); }
+    #fp-down-btn { top: calc(50% + 20px); }
+    @media (max-width: 767px) {
+      /* on small screens push less far to avoid running off-screen */
+      .fp-nav-btn { right: 56px; width:40px; height:40px; }
+    }
+    </style>
+
     <!-- D3 -->
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
     <!-- Leaflet CSS & JS -->
@@ -313,6 +345,58 @@
             }
         }
     });
+
+      // Create persistent up/down navigation buttons and wire to fullPage API
+      (function(){
+        function makeBtn(id, label, title) {
+          const btn = document.createElement('button');
+          btn.id = id;
+          btn.className = 'fp-nav-btn';
+          btn.setAttribute('aria-label', label);
+          btn.title = title;
+          btn.type = 'button';
+          return btn;
+        }
+
+        const up = makeBtn('fp-up-btn', 'Previous section', 'Previous section');
+        up.innerHTML = '▲';
+        const down = makeBtn('fp-down-btn', 'Next section', 'Next section');
+        down.innerHTML = '▼';
+
+        document.body.appendChild(up);
+        document.body.appendChild(down);
+
+        up.addEventListener('click', () => {
+          // If the mousedown/touchstart already triggered navigation,
+          // skip the click to avoid double navigation.
+          if (up._fp_recentPointer) { up._fp_recentPointer = false; return; }
+          if (window.fullpage_api && typeof window.fullpage_api.moveSectionUp === 'function') {
+            window.fullpage_api.moveSectionUp();
+          }
+        });
+
+        down.addEventListener('click', () => {
+          if (down._fp_recentPointer) { down._fp_recentPointer = false; return; }
+          if (window.fullpage_api && typeof window.fullpage_api.moveSectionDown === 'function') {
+            window.fullpage_api.moveSectionDown();
+          }
+        });
+
+        // Allow long-press / hold to repeatedly navigate (optional convenience)
+        function addHoldRepeat(button, fn) {
+          let timer = null; let interval = null;
+          const start = () => { button._fp_recentPointer = true; fn(); timer = setTimeout(() => { interval = setInterval(fn, 200); }, 350); };
+          const stop = () => { clearTimeout(timer); clearInterval(interval); timer = interval = null; setTimeout(() => { button._fp_recentPointer = false; }, 60); };
+          button.addEventListener('mousedown', start);
+          button.addEventListener('touchstart', start, {passive:true});
+          document.addEventListener('mouseup', stop);
+          document.addEventListener('touchend', stop);
+          document.addEventListener('touchcancel', stop);
+        }
+
+        addHoldRepeat(up, () => window.fullpage_api && window.fullpage_api.moveSectionUp());
+        addHoldRepeat(down, () => window.fullpage_api && window.fullpage_api.moveSectionDown());
+      })();
 </script>
 
 <script type="module" src="js/main.js"></script>
