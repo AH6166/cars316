@@ -108,17 +108,40 @@ d3.csv("../data/original/collisions_severity.csv").then(data => {
     )].sort((a, b) => a - b);
 
     // Top 5 vehicle types
+    // Normalize vehicle type strings so we can exclude noisy variants
+    function normalizeVehicleType(v) {
+        if (!v) return '';
+        // Make lowercase, unify common compact forms, remove punctuation,
+        // and normalize whitespace (so "4dr sedan", "4 dr sedan", "4-dr sedan"
+        // all become "4 dr sedan").
+        return v.toLowerCase()
+            .replace(/4dr/g, '4 dr')
+            .replace(/4door/g, '4 door')
+            .replace(/[-_/]/g, ' ')
+            .replace(/[^a-z0-9 ]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    const excludedNormalized = new Set(['4 dr sedan', 'taxi']);
+
     const vehicleCounts = {};
     data.forEach(d => {
         if (!d.VEHICLE_TYPE) return;
-        vehicleCounts[d.VEHICLE_TYPE] =
-            (vehicleCounts[d.VEHICLE_TYPE] || 0) + 1;
+        const raw = d.VEHICLE_TYPE;
+        const key = normalizeVehicleType(raw);
+        if (excludedNormalized.has(key)) return;
+        vehicleCounts[raw] = (vehicleCounts[raw] || 0) + 1;
     });
 
-    const topVehicles = Object.entries(vehicleCounts)
+    let topVehicles = Object.entries(vehicleCounts)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
-        .map(([v]) => v);
+        .map(([v]) => v)
+        .filter(v => {
+            const k = normalizeVehicleType(v);
+            return !excludedNormalized.has(k);
+        });
 
     // Initial filter state from URL
     let selectedYear = years.includes(getYearFromURL()) ? getYearFromURL() : null;
